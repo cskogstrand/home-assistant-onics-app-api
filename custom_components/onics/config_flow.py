@@ -6,6 +6,7 @@ from uuid import uuid4
 import probatio as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
@@ -52,14 +53,17 @@ class OnicsConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for environment and credentials, then authenticate by listing homes."""
+        """Sign in to Prod unless an advanced environment is selected."""
         errors = {}
+        environment = (
+            (user_input or {}).get("advanced", {}).get(CONF_ENVIRONMENT, "prod")
+        )
         if user_input is not None:
-            if user_input.get(CONF_ENVIRONMENT) not in ENVIRONMENTS:
-                errors[CONF_ENVIRONMENT] = "invalid_environment"
+            if environment not in ENVIRONMENTS:
+                errors["base"] = "invalid_environment"
             else:
                 data = {
-                    CONF_ENVIRONMENT: user_input[CONF_ENVIRONMENT],
+                    CONF_ENVIRONMENT: environment,
                     CONF_USERNAME: user_input[CONF_USERNAME].strip(),
                     CONF_PASSWORD: user_input[CONF_PASSWORD],
                 }
@@ -83,18 +87,6 @@ class OnicsConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_ENVIRONMENT,
-                        default=(user_input or {}).get(CONF_ENVIRONMENT, "test"),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                {"value": key, "label": name}
-                                for key, name in ENVIRONMENT_NAMES.items()
-                            ],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                    vol.Required(
                         CONF_USERNAME, default=(user_input or {}).get(CONF_USERNAME, "")
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
@@ -102,6 +94,24 @@ class OnicsConfigFlow(ConfigFlow, domain=DOMAIN):
                         )
                     ),
                     vol.Required(CONF_PASSWORD): PASSWORD_SELECTOR,
+                    vol.Optional("advanced", default=dict): section(
+                        vol.Schema(
+                            {
+                                vol.Required(
+                                    CONF_ENVIRONMENT, default=environment
+                                ): selector.SelectSelector(
+                                    selector.SelectSelectorConfig(
+                                        options=[
+                                            {"value": key, "label": name}
+                                            for key, name in ENVIRONMENT_NAMES.items()
+                                        ],
+                                        mode=selector.SelectSelectorMode.DROPDOWN,
+                                    )
+                                ),
+                            }
+                        ),
+                        {"collapsed": True},
+                    ),
                 }
             ),
             errors=errors,

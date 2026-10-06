@@ -9,8 +9,8 @@ Development stays in this existing `home-assistant-onics-app-api` project.
 1. Install `custom_components/onics` in your Home Assistant configuration's
    `custom_components` directory and restart Home Assistant.
 2. Open **Settings → Devices & services → Add integration → Onics**.
-3. Select **Test**, **QA**, or **Prod**, then enter your Onics email and password
-   for that environment. Test is the default.
+3. Enter your Onics email and password. **Prod** is the default environment;
+   expand **Advanced** to select **Test** or **QA** before signing in.
 4. Select one of the homes returned for your account.
 5. After the initial SSE snapshot arrives, supported temperature attributes
    appear as sensors. No synthetic sensors or measurements are created.

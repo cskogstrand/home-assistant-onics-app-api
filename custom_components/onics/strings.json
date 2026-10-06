@@ -3,11 +3,16 @@
     "step": {
       "user": {
         "title": "Sign in to Onics",
-        "description": "Select your environment and enter your Onics account credentials.",
+        "description": "Enter your Onics account credentials.",
         "data": {
-          "environment": "Environment",
           "username": "Email",
           "password": "Password"
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "data": {"environment": "Environment"}
+          }
         }
       },
       "home": {

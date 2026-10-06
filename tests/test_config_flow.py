@@ -12,11 +12,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.onics.api import OnicsAuthError, OnicsError, OnicsRateLimitError
 from custom_components.onics.const import DOMAIN
 
-LOGIN = {
-    "environment": "test",
+CREDENTIALS = {
     "username": "test@example.invalid",
     "password": "test-password",
 }
+LOGIN = {**CREDENTIALS, "advanced": {"environment": "test"}}
 HOMES = [
     {"id": "test-home", "name": "Test home"},
     {"id": "other-home", "name": "Other home"},
@@ -46,7 +46,10 @@ async def test_user_form(hass):
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "user"
     schema = result["data_schema"].schema
-    assert schema["environment"].config["options"] == [
+    assert list(schema) == ["username", "password", "advanced"]
+    assert schema["advanced"].options == {"collapsed": True}
+    assert result["data_schema"](CREDENTIALS)["advanced"]["environment"] == "prod"
+    assert schema["advanced"].schema.schema["environment"].config["options"] == [
         {"value": "test", "label": "Test"},
         {"value": "qa", "label": "QA"},
         {"value": "prod", "label": "Prod"},
@@ -58,6 +61,7 @@ async def test_user_form(hass):
 @pytest.mark.parametrize(
     "environment,expected_url",
     [
+        (None, "https://home.api.evasmart.no"),
         ("test", "https://home-hla.smarthome-test.datek.io"),
         ("qa", "https://home-hla.smarthome-qa.datek.io"),
         ("prod", "https://home.api.evasmart.no"),
@@ -79,14 +83,19 @@ async def test_login_home_selection_and_private_session(
         sessions.append(client._session)
         return HOMES
 
-    login = {**LOGIN, "environment": environment}
+    login = dict(CREDENTIALS)
+    if environment is not None:
+        login["advanced"] = {"environment": environment}
     with patch(
         "custom_components.onics.api.OnicsClient.async_get_homes",
         autospec=True,
         side_effect=get_homes,
     ):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=login
+            DOMAIN, context={"source": SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], login
         )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "home"
@@ -99,12 +108,13 @@ async def test_login_home_selection_and_private_session(
     await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] | {"sse_client_id": None} == {
-        **login,
+        **CREDENTIALS,
+        "environment": environment or "prod",
         "home_id": "test-home",
         "sse_client_id": None,
     }
     assert UUID(result["data"]["sse_client_id"]).version == 4
-    assert result["result"].unique_id == f"{environment}:test-home"
+    assert result["result"].unique_id == f"{environment or 'prod'}:test-home"
     mock_setup.assert_awaited_once()
 
 
@@ -123,6 +133,7 @@ async def test_login_failure_can_be_corrected(hass, mock_homes, error, reason, c
     )
     assert result["step_id"] == "user"
     assert result["errors"] == {"base": reason}
+    assert result["data_schema"](CREDENTIALS)["advanced"]["environment"] == "test"
     assert LOGIN["password"] not in caplog.text
     mock_homes.side_effect = None
     result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
@@ -143,9 +154,12 @@ async def test_invalid_environment_never_sends_credentials(hass, mock_homes):
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
-        data={**LOGIN, "environment": "https://untrusted.example.invalid"},
+        data={
+            **LOGIN,
+            "advanced": {"environment": "https://untrusted.example.invalid"},
+        },
     )
-    assert result["errors"] == {"environment": "invalid_environment"}
+    assert result["errors"] == {"base": "invalid_environment"}
     mock_homes.assert_not_awaited()
 
 
@@ -170,13 +184,18 @@ async def test_duplicate_home_is_scoped_to_environment(
     existing = MockConfigEntry(
         domain=DOMAIN,
         unique_id="test:test-home",
-        data={**LOGIN, "home_id": "test-home", "sse_client_id": "test-client"},
+        data={
+            **CREDENTIALS,
+            "environment": "test",
+            "home_id": "test-home",
+            "sse_client_id": "test-client",
+        },
     )
     existing.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
-        data={**LOGIN, "environment": environment},
+        data={**LOGIN, "advanced": {"environment": environment}},
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"home_id": "test-home"}
@@ -201,7 +220,12 @@ async def test_duplicate_home_is_scoped_to_environment(
 async def test_reauth_preserves_account_home_and_stream_id(
     hass, mock_homes, outcome, reason
 ):
-    data = {**LOGIN, "home_id": "test-home", "sse_client_id": "test-client"}
+    data = {
+        **CREDENTIALS,
+        "environment": "test",
+        "home_id": "test-home",
+        "sse_client_id": "test-client",
+    }
     entry = MockConfigEntry(domain=DOMAIN, unique_id="test:test-home", data=data)
     entry.add_to_hass(hass)
     if isinstance(outcome, Exception):
