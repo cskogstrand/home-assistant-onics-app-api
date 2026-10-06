@@ -141,8 +141,12 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
         except EvaAuthError as err:
             self.config_entry.async_start_reauth(self.hass)
             raise HomeAssistantError("Eva authentication rejected") from err
-        except (EvaError, TimeoutError) as err:
-            raise HomeAssistantError("Eva did not confirm the command") from err
+        except EvaError as err:
+            raise HomeAssistantError(str(err)) from err
+        except TimeoutError as err:
+            raise HomeAssistantError(
+                "Eva accepted the command but did not confirm it within 30 seconds"
+            ) from err
         finally:
             self._command_listeners.discard(receive)
             result.cancel()

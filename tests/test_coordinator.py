@@ -1,10 +1,14 @@
 """Exercise reconnects, failure states and cancellation without network access."""
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryError,
+    HomeAssistantError,
+)
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -27,6 +31,36 @@ def make_coordinator(hass, events):
     coordinator = EvaCoordinator(hass, entry, client)
     entry.runtime_data = coordinator
     return coordinator
+
+
+@pytest.mark.parametrize("failure", [EvaError("Eva returned HTTP 415"), None])
+async def test_command_distinguishes_request_failure_from_missing_confirmation(
+    hass, snapshot, failure
+):
+    coordinator = make_coordinator(hass, None)
+    coordinator.data = coordinator.data.apply(snapshot)
+    coordinator.last_update_success = True
+    coordinator.client.async_command = AsyncMock(
+        side_effect=failure, return_value="test-action"
+    )
+    expected = (
+        "Eva returned HTTP 415"
+        if failure
+        else "Eva accepted the command but did not confirm it within 30 seconds"
+    )
+    timeout = asyncio.timeout
+    with (
+        patch(
+            "custom_components.eva.coordinator.asyncio.timeout",
+            side_effect=lambda _: timeout(0),
+        ),
+        pytest.raises(HomeAssistantError, match=expected),
+    ):
+        await coordinator.async_command(
+            "PATCH", ("devices", "test-device", "attributes", "on", "true")
+        )
+    coordinator.client.async_command.assert_awaited_once()
+    assert not coordinator._command_listeners
 
 
 async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
