@@ -1,4 +1,4 @@
-name: Lint
+name: Lint and test
 
 on:
   push:
@@ -25,17 +25,16 @@ jobs:
         with:
           python-version: "3.14"
           cache: "pip"
-          cache-dependency-path: |
-            requirements_common.txt
-            requirements_lint.txt
+          cache-dependency-path: requirements*.txt
 
       - name: Install requirements
-        run: |
-          python3 -m pip install -r requirements_common.txt
-          python3 -m pip install -r requirements_lint.txt
+        run: python3 -m pip install -r requirements_dev.txt
 
       - name: Lint
         run: python3 -m ruff check .
 
       - name: Format
         run: python3 -m ruff format . --check
+
+      - name: Test with sanitized fixtures and no network
+        run: python3 -m pytest

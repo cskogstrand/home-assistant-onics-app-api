@@ -1,0 +1,10 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.9.4
+    ports:
+      - "127.0.0.1:8124:8123"
+    volumes:
+      - ./config:/config
+      - ./custom_components/onics:/config/custom_components/onics:ro
+    environment:
+      TZ: Europe/Oslo

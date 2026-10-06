@@ -1,0 +1,15 @@
+{
+  "config": {
+    "step": {},
+    "abort": {
+      "configuration_pending": "This personal test integration is awaiting confirmed API base URL, authentication configuration, client brand, and schema version (the API docs mention both 5 and 7). Authentication and home selection are not implemented yet. No credentials have been stored or sensors created."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {"name": "Temperature"},
+      "air_temperature": {"name": "Air temperature"},
+      "floor_temperature": {"name": "Floor temperature"}
+    }
+  }
+}
