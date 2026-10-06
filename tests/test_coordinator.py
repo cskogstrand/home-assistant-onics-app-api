@@ -15,7 +15,9 @@ from custom_components.onics.sensor import DESCRIPTIONS, OnicsTemperatureSensor
 
 def make_coordinator(hass, events):
     entry = MockConfigEntry(
-        domain="onics", data={"home_id": "test-home", "sse_client_id": "test-client"}
+        domain="onics",
+        unique_id="test:test-home",
+        data={"home_id": "test-home", "sse_client_id": "test-client"},
     )
     entry.add_to_hass(hass)
     client = MagicMock(spec=OnicsClient)
@@ -55,7 +57,7 @@ async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
     await coordinator._async_update_data()
     assert sensor.available
     assert sensor.native_value == 21.5
-    assert sensor.unique_id == "test-home:test-device:temperature"
+    assert sensor.unique_id == "test:test-home:test-device:temperature"
     changed.clear()
     queue.put_nowait(
         {

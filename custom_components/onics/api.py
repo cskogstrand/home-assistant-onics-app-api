@@ -8,7 +8,7 @@ from urllib.parse import quote
 import aiohttp
 from yarl import URL
 
-from .const import CLIENT_ID, STREAM_IDLE_TIMEOUT
+from .const import CLIENT_BRAND, CLIENT_ID, SCHEMA_VERSION, STREAM_IDLE_TIMEOUT
 
 
 class OnicsError(Exception):
@@ -45,28 +45,25 @@ def validate_base_url(value: str) -> str:
 
 
 class OnicsClient:
-    """One client's HTTP and SSE transport; authentication is supplied by its session."""
+    """One client's HTTP and SSE transport using documented Basic authentication."""
 
     def __init__(
         self,
         session: aiohttp.ClientSession,
         base_url: str,
-        client_brand: str,
-        schema_version: int,
+        username: str,
+        password: str,
     ) -> None:
-        """Use explicitly supplied deployment settings, without schema defaults."""
+        """Keep credentials local to requests, never on a shared session or URL."""
         self._session = session
         self._base_url = validate_base_url(base_url)
-        if (
-            not client_brand.strip()
-            or type(schema_version) is not int
-            or schema_version < 1
-        ):
-            raise ValueError("Client brand and a confirmed schema version are required")
+        if not username or not password:
+            raise ValueError("Username and password are required")
         self._headers = {
+            "Authorization": aiohttp.encode_basic_auth(username, password),
             "X-Client-ID": CLIENT_ID,
-            "X-Client-Brand": client_brand,
-            "X-Schema-Version": str(schema_version),
+            "X-Client-Brand": CLIENT_BRAND,
+            "X-Schema-Version": str(SCHEMA_VERSION),
             "X-Client-Language": "en",
         }
         self.retry_seconds = 5.0

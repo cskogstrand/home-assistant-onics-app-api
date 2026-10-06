@@ -28,7 +28,12 @@ def make_client(status=200, wire=b"", payload=None):
     session.get.return_value.__aenter__ = AsyncMock(return_value=response)
     session.get.return_value.__aexit__ = AsyncMock(return_value=False)
     return (
-        OnicsClient(session, "https://api.example.invalid/prefix", "test-brand", 7),
+        OnicsClient(
+            session,
+            "https://api.example.invalid/prefix",
+            "test@example.invalid",
+            "test-password",
+        ),
         session,
         response,
     )
@@ -54,11 +59,14 @@ async def test_sse_framing_headers_retry_and_replay():
         == "https://api.example.invalid/prefix/homes/test-home/clients/test-client"
     )
     assert kwargs["headers"]["X-Partition-Key"] == "e"
-    assert kwargs["headers"]["X-Client-Brand"] == "test-brand"
+    assert kwargs["headers"]["X-Client-Brand"] == "eva"
     assert kwargs["headers"]["X-Schema-Version"] == "7"
     assert kwargs["params"] == {"lastSeenEventId": "previous"}
     assert kwargs["timeout"].sock_read == 15
     assert kwargs["allow_redirects"] is False
+    assert kwargs["headers"]["Authorization"] == aiohttp.encode_basic_auth(
+        "test@example.invalid", "test-password"
+    )
     session.get.return_value.__aexit__.assert_awaited_once()
 
 
@@ -98,8 +106,15 @@ async def test_bad_sse_is_a_transport_error(wire):
     ],
 )
 async def test_home_list_retains_only_identity_and_name(payload):
-    client, _, _ = make_client(payload=payload)
+    client, session, _ = make_client(payload=payload)
     assert await client.async_get_homes() == [{"id": "test-home", "name": "Test home"}]
+    kwargs = session.get.call_args.kwargs
+    assert kwargs["headers"]["X-Client-Brand"] == "eva"
+    assert kwargs["headers"]["X-Schema-Version"] == "7"
+    assert kwargs["headers"]["Authorization"] == aiohttp.encode_basic_auth(
+        "test@example.invalid", "test-password"
+    )
+    assert kwargs["allow_redirects"] is False
 
 
 @pytest.mark.parametrize(

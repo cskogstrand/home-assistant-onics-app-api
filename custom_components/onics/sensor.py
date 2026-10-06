@@ -61,7 +61,7 @@ async def async_setup_entry(
 
 
 class OnicsTemperatureSensor(CoordinatorEntity[OnicsCoordinator], SensorEntity):
-    """A stable home/device/attribute identity, independent of names and rooms."""
+    """A stable environment/home/device/attribute identity."""
 
     _attr_has_entity_name = True
 
@@ -75,14 +75,18 @@ class OnicsTemperatureSensor(CoordinatorEntity[OnicsCoordinator], SensorEntity):
         super().__init__(coordinator)
         self._device_id = device_id
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.home_id}:{device_id}:{description.key}"
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.unique_id}:{device_id}:{description.key}"
+        )
 
     @property
     def device_info(self) -> DeviceInfo:
         """Use API device identity and metadata, never the account's credentials."""
         device = self.coordinator.data.devices.get(self._device_id, {})
         return DeviceInfo(
-            identifiers={(DOMAIN, f"{self.coordinator.home_id}:{self._device_id}")},
+            identifiers={
+                (DOMAIN, f"{self.coordinator.config_entry.unique_id}:{self._device_id}")
+            },
             name=device.get("name"),
             manufacturer=device.get("vendor"),
             model=device.get("model"),

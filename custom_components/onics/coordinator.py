@@ -10,7 +10,13 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import OnicsAuthError, OnicsClient, OnicsError, OnicsRateLimitError
-from .const import CONF_HOME_ID, CONF_SSE_CLIENT_ID, DOMAIN, STREAM_IDLE_TIMEOUT
+from .const import (
+    CONF_HOME_ID,
+    CONF_SSE_CLIENT_ID,
+    DOMAIN,
+    INITIAL_SNAPSHOT_TIMEOUT,
+    STREAM_IDLE_TIMEOUT,
+)
 from .state import HomeState, InvalidEvent
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,7 +55,7 @@ class OnicsCoordinator(DataUpdateCoordinator[HomeState]):
     async def _async_update_data(self) -> HomeState:
         """Wait for a real snapshot during setup; never turn stale data available."""
         try:
-            async with asyncio.timeout(35):
+            async with asyncio.timeout(INITIAL_SNAPSHOT_TIMEOUT):
                 await asyncio.shield(self._ready)
         except OnicsAuthError as err:
             raise ConfigEntryAuthFailed("Onics authentication rejected") from err
@@ -67,7 +73,7 @@ class OnicsCoordinator(DataUpdateCoordinator[HomeState]):
             has_snapshot = False
             try:
                 async with (
-                    asyncio.timeout(35) as snapshot_timeout,
+                    asyncio.timeout(INITIAL_SNAPSHOT_TIMEOUT) as snapshot_timeout,
                     aclosing(
                         self.client.async_events(
                             self.home_id,

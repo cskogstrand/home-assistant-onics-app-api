@@ -1,8 +1,38 @@
 {
   "config": {
-    "step": {},
+    "step": {
+      "user": {
+        "title": "Sign in to Onics",
+        "description": "Select your environment and enter your Onics account credentials.",
+        "data": {
+          "environment": "Environment",
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "home": {
+        "title": "Select a home",
+        "description": "Choose the home to connect to Home Assistant.",
+        "data": {"home_id": "Home"}
+      },
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "Enter the current password for {username} in {environment}. Your selected home will stay the same.",
+        "data": {"password": "Password"}
+      }
+    },
+    "error": {
+      "invalid_auth": "Authentication failed. Check your email, password, environment, and account access.",
+      "cannot_connect": "Unable to connect to Onics. Try again later.",
+      "rate_limited": "Onics is limiting requests. Wait a while before trying again.",
+      "invalid_environment": "Select Test, QA, or Prod.",
+      "invalid_home": "Select a home from the list.",
+      "home_not_found": "This account no longer has access to the selected home. Restore access or remove this entry and add another home."
+    },
     "abort": {
-      "configuration_pending": "This personal test integration is awaiting confirmed API base URL, authentication configuration, client brand, and schema version (the API docs mention both 5 and 7). Authentication and home selection are not implemented yet. No credentials have been stored or sensors created."
+      "already_configured": "This home is already configured in this environment.",
+      "no_homes": "Your account has no accessible homes in this environment.",
+      "reauth_successful": "Authentication was updated successfully."
     }
   },
   "entity": {
