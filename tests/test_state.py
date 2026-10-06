@@ -81,3 +81,40 @@ def test_offline_deleted_and_invalid_events(snapshot):
                 "name": "temperature",
             }
         )
+
+
+def test_live_moods_energy_saver_and_failed_pairing(snapshot):
+    snapshot["home"]["moods"] = [{"id": "home-mood", "name": "Home", "active": True}]
+    snapshot["home"]["rooms"][0]["moods"] = [{"id": "room-mood", "name": "Room"}]
+    state = HomeState("test-home", {}, False).apply(snapshot)
+    original = deepcopy(state)
+    changed = state.apply(
+        {"eventType": "activeMoodsChanged", "activeMoods": ["room-mood"]}
+    )
+    assert changed.moods["room-mood"]["active"] is True
+    assert changed.moods["home-mood"]["active"] is False
+    changed = changed.apply({"eventType": "moodActivated", "moodId": "home-mood"})
+    assert changed.moods["home-mood"]["active"] is True
+    assert changed.moods["room-mood"]["active"] is True
+    changed = changed.apply({"eventType": "activeMoodsChanged", "activeMoods": []})
+    assert not any(mood["active"] for mood in changed.moods.values())
+    for event_type, enabled in [
+        ("deviceEnergySaverEnabled", True),
+        ("deviceEnergySaverDisabled", False),
+    ]:
+        changed = changed.apply({"eventType": event_type, "deviceId": "test-device"})
+        assert changed.devices["test-device"]["energySaverEnabled"] is enabled
+        assert (
+            changed.devices["test-device"]["attributes"]
+            == state.devices["test-device"]["attributes"]
+        )
+    assert (
+        changed.apply(
+            {"eventType": "deviceAddFailed", "deviceId": "test-device"}
+        ).devices
+        == {}
+    )
+    assert state == original
+    for active in [None, "room-mood", [{}]]:
+        with pytest.raises(InvalidEvent, match="active moods"):
+            state.apply({"eventType": "activeMoodsChanged", "activeMoods": active})

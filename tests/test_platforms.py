@@ -423,7 +423,8 @@ async def test_native_platforms_commands_updates_and_cleanup(hass, snapshot):
                 {"entity_id": entity_id(hass, "alarm_control_panel", "alarm")},
                 blocking=True,
             )
-        entry.runtime_data.data.devices["plug"]["energySaverEnabled"] = True
+        queue.put_nowait({"eventType": "deviceEnergySaverEnabled", "deviceId": "plug"})
+        await hass.async_block_till_done()
         with pytest.raises(ServiceValidationError):
             await hass.services.async_call(
                 "switch",
@@ -432,6 +433,23 @@ async def test_native_platforms_commands_updates_and_cleanup(hass, snapshot):
                 blocking=True,
             )
         assert len(writes) == before
+        queue.put_nowait({"eventType": "deviceEnergySaverDisabled", "deviceId": "plug"})
+        queue.put_nowait(
+            {"eventType": "activeMoodsChanged", "activeMoods": ["evening"]}
+        )
+        await hass.async_block_till_done()
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {"entity_id": entity_id(hass, "switch", "plug:on")},
+            blocking=True,
+        )
+        assert len(writes) == before + 1
+        scene_id = entity_id(hass, "scene", "mood:evening")
+        assert hass.states.get(scene_id).attributes["active"] is True
+        queue.put_nowait({"eventType": "activeMoodsChanged", "activeMoods": []})
+        await hass.async_block_till_done()
+        assert hass.states.get(scene_id).attributes["active"] is False
 
         queue.put_nowait(
             {

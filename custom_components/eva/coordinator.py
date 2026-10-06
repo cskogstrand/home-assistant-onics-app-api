@@ -24,6 +24,13 @@ from .const import (
     STREAM_IDLE_TIMEOUT,
     STREAM_REFRESH_INTERVAL,
 )
+from .events import (
+    ACTION_SUCCESS_EVENTS,
+    EVENT_TYPE,
+    STREAM_EVENTS,
+    action_failed,
+    event_data,
+)
 from .state import HomeState, InvalidEvent
 
 _LOGGER = logging.getLogger(__name__)
@@ -106,18 +113,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             event_type = event.get("eventType", "")
             event_id = event.get("actionId")
             if not isinstance(event_id, str) or not (
-                event_type
-                in {
-                    "deviceAttributeChanged",
-                    "groupAttributeChanged",
-                    "deviceUpdated",
-                    "deviceIdentified",
-                    "deviceSoftwareUpdateAssigned",
-                    "activeProfileUpdated",
-                    "moodActivated",
-                    "actionTimeout",
-                }
-                or "Failed" in event_type
+                event_type in ACTION_SUCCESS_EVENTS or action_failed(event_type)
             ):
                 return
             if action_id is None:
@@ -136,7 +132,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                 result.set_result(early_results[action_id])
             async with asyncio.timeout(30):
                 event_type = await result
-            if event_type == "actionTimeout" or "Failed" in event_type:
+            if action_failed(event_type):
                 raise HomeAssistantError("Eva could not complete the command")
         except EvaAuthError as err:
             self.config_entry.async_start_reauth(self.hass)
@@ -220,6 +216,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                             snapshot_timeout.reschedule(None)
                             if "home" in event or event_type in {
                                 "deviceDeleted",
+                                "deviceAddFailed",
                                 "groupDeleted",
                                 "homeDeleted",
                             }:
@@ -228,6 +225,15 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                                 self.async_set_updated_data(state)
                             for listener in tuple(self._command_listeners):
                                 listener(event)
+                            if event_type not in STREAM_EVENTS:
+                                self.hass.bus.async_fire(
+                                    EVENT_TYPE,
+                                    {
+                                        "config_entry_id": self.config_entry.entry_id,
+                                        "home_id": self.home_id,
+                                        **event_data(event),
+                                    },
+                                )
                             backoff = 1.0
                             if not self._ready.done():
                                 self._ready.set_result(None)

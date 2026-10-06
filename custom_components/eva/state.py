@@ -16,7 +16,7 @@ class HomeState:
     home_id: str
     devices: dict[str, dict[str, Any]]
     gateway_online: bool
-    moods: dict[str, dict[str, str]] = field(default_factory=dict)
+    moods: dict[str, dict[str, Any]] = field(default_factory=dict)
     alarm: dict[str, Any] = field(default_factory=dict)
 
     def apply(self, event: dict[str, Any]) -> HomeState:
@@ -40,7 +40,10 @@ class HomeState:
                         mood.get("id"), str
                     ):
                         raise InvalidEvent("Invalid mood")
-                    moods[mood["id"]] = {"name": mood.get("name", mood["id"])}
+                    moods[mood["id"]] = {
+                        "name": mood.get("name", mood["id"]),
+                        "active": mood.get("active") is True,
+                    }
             for room in rooms:
                 for resource in ("devices", "groups"):
                     entries = room.get(resource, [] if resource == "groups" else None)
@@ -96,6 +99,30 @@ class HomeState:
             return HomeState(self.home_id, {}, False)
         if event_type in {"gatewayOnline", "gatewayOffline"}:
             return replace(self, gateway_online=event_type == "gatewayOnline")
+        if event_type == "activeMoodsChanged":
+            active = event.get("activeMoods")
+            if not isinstance(active, list) or any(
+                not isinstance(mood_id, str) for mood_id in active
+            ):
+                raise InvalidEvent("Invalid active moods")
+            return replace(
+                self,
+                moods={
+                    mood_id: {**mood, "active": mood_id in active}
+                    for mood_id, mood in self.moods.items()
+                },
+            )
+        if event_type == "moodActivated":
+            mood_id = event.get("moodId")
+            if isinstance(mood_id, str) and mood_id in self.moods:
+                return replace(
+                    self,
+                    moods={
+                        **self.moods,
+                        mood_id: {**self.moods[mood_id], "active": True},
+                    },
+                )
+            return self
         if event_type in {"activeProfileUpdated", "activeProfileExitTimeExpired"}:
             profile = event.get("activeProfile")
             if not isinstance(profile, dict):
@@ -128,7 +155,7 @@ class HomeState:
             event_type = event_type.replace("group", "device", 1)
         if not isinstance(device_id, str):
             return self
-        if event_type == "deviceDeleted":
+        if event_type in {"deviceDeleted", "deviceAddFailed"}:
             return replace(
                 self, devices={k: v for k, v in self.devices.items() if k != device_id}
             )
@@ -160,6 +187,8 @@ class HomeState:
             "deviceAttributeReport",
             "deviceOnline",
             "deviceOffline",
+            "deviceEnergySaverEnabled",
+            "deviceEnergySaverDisabled",
         }:
             return self
         if device_id not in self.devices:
@@ -167,6 +196,11 @@ class HomeState:
         device = self.devices[device_id]
         if event_type in {"deviceOnline", "deviceOffline"}:
             device = {**device, "online": event_type == "deviceOnline"}
+        elif event_type in {"deviceEnergySaverEnabled", "deviceEnergySaverDisabled"}:
+            device = {
+                **device,
+                "energySaverEnabled": event_type == "deviceEnergySaverEnabled",
+            }
         else:
             name = event.get("name")
             if not isinstance(name, str):

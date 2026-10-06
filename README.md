@@ -95,6 +95,46 @@ Do not use a production configuration directory here.
   followed by the next status poll. Reconnect and Energy Saver restrictions are
   respected.
 
+### Live SSE events
+
+All 117 `SSE:` event types in the [App API event table](https://onicsas.github.io/home-hla-docs/#events-event-types)
+are handled. The 65 types documented as containing a complete home replace the
+local snapshot, including device/room/group/mood changes, firmware completion,
+settings, users and services. Any future event containing a home does the same.
+The API itself supplies those snapshots; the integration does not poll for them.
+
+Events without a home update attributes, device firmware progress, alarm profiles
+and countdowns, active moods, and Energy Saver enable/disable restrictions directly.
+Failed pairing removes the failed device. Scenes expose an `active` attribute
+updated by `moodActivated` and `activeMoodsChanged`. Attribute-sent notifications
+do not change reported values or complete pending commands.
+
+Every business event also fires `eva_event` on Home Assistant's event bus, even
+when no entity state changes. This makes gateway updates, alerts, warnings, scan
+progress, electricity limits, access changes, Energy Saver and ARC notifications
+available to automations. Stream housekeeping events are excluded. Events include
+`config_entry_id`, `home_id`, the API's `eventType`, and supplied event/resource IDs.
+Operational data includes scalar `name`/`value`, progress, software update status,
+alarm mode/countdowns and active mood IDs. Alert objects expose only scalar
+`id`, `type`, `active` and `status` fields; warnings expose only `id`, `type`,
+`severity`, `alarm` and `dismissible`. Full homes, user details, PINs, RFID tags,
+access labels, free-form warnings and unknown fields are excluded.
+
+For notifications without a documented state payload (such as `arcUpdated` and
+`energySaverDeviceStatusUpdated`), the event is the automation signal; no device
+values are inferred. Replayed events retain their API `id` when supplied.
+
+Example automation trigger:
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: eva_event
+    event_data:
+      home_id: YOUR_HOME_ID
+      eventType: electricityMainCircuitBreakerLimitExceeded
+```
+
 ## Supported capabilities
 
 All attributes in the API's documented ZigBee and non-ZigBee attribute tables

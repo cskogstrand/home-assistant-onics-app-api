@@ -54,6 +54,12 @@ class EvaScene(CoordinatorEntity, Scene):
             and self._mood_id in self.coordinator.data.moods
         )
 
+    @property
+    def extra_state_attributes(self):
+        return {
+            "active": self.coordinator.data.moods.get(self._mood_id, {}).get("active")
+        }
+
     async def async_activate(self, **kwargs):
         await self.coordinator.async_command(
             "POST", ("moods", self._mood_id, "activate")
