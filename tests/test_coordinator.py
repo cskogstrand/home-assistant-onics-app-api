@@ -13,7 +13,6 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eva.api import EvaAuthError, EvaClient, EvaError
-from custom_components.eva.const import STREAM_REFRESH_INTERVAL
 from custom_components.eva.coordinator import EvaCoordinator
 from custom_components.eva.sensor import DESCRIPTIONS, EvaSensor
 
@@ -127,11 +126,11 @@ async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
     assert coordinator._task is None
 
 
-async def test_stream_refresh_preserves_availability_cursor_and_closes_stream(
+async def test_server_closure_reconnects_with_cursor_retry_and_availability(
     hass, snapshot, caplog
 ):
-    assert 0 < STREAM_REFRESH_INTERVAL < 10 * 60
     connections = asyncio.Queue()
+    close_stream = asyncio.Queue()
     closed = []
 
     async def stream(home_id, client_id, last_seen_event_id):
@@ -139,28 +138,25 @@ async def test_stream_refresh_preserves_availability_cursor_and_closes_stream(
         connections.put_nowait((home_id, client_id, last_seen_event_id))
         try:
             yield snapshot
-            while True:
-                yield {"eventType": "keepAlive", "id": f"test-event-{connection}"}
-                await asyncio.sleep(0.005)
+            yield {"eventType": "keepAlive", "id": f"test-event-{connection}"}
+            await close_stream.get()
         finally:
             closed.append(connection)
 
     coordinator = make_coordinator(hass, stream)
-    coordinator.client.retry_seconds = 60
+    coordinator.client.retry_seconds = 1.1
     sensor = EvaSensor(coordinator, "test-device", DESCRIPTIONS[0])
-    with (
-        patch("custom_components.eva.coordinator.STREAM_REFRESH_INTERVAL", 0.05),
-        patch.object(
-            coordinator,
-            "async_set_update_error",
-            wraps=coordinator.async_set_update_error,
-        ) as update_error,
-    ):
+    with patch.object(
+        coordinator,
+        "async_set_update_error",
+        wraps=coordinator.async_set_update_error,
+    ) as update_error:
         await coordinator._async_setup()
         try:
             await coordinator._async_update_data()
+            closed_at = hass.loop.time()
             for connection in range(1, 4):
-                assert await asyncio.wait_for(connections.get(), 1) == (
+                assert await asyncio.wait_for(connections.get(), 3) == (
                     "test-home",
                     "test-client",
                     None if connection == 1 else f"test-event-{connection - 1}",
@@ -168,12 +164,41 @@ async def test_stream_refresh_preserves_availability_cursor_and_closes_stream(
                 assert closed == list(range(1, connection))
                 assert sensor.available
                 assert sensor.native_value == 21.5
+                if connection > 1:
+                    assert (
+                        hass.loop.time() - closed_at >= coordinator.client.retry_seconds
+                    )
+                if connection < 3:
+                    closed_at = hass.loop.time()
+                    close_stream.put_nowait(None)
             update_error.assert_not_called()
             assert "Error requesting eva data" not in caplog.text
         finally:
             await coordinator.async_shutdown()
     assert closed == [1, 2, 3]
     assert coordinator._task is None
+
+
+async def test_stream_closed_without_snapshot_is_an_error(hass):
+    closed = asyncio.Event()
+
+    async def stream(*args):
+        closed.set()
+        return
+        yield  # Make this an async generator, like the real transport.
+
+    coordinator = make_coordinator(hass, stream)
+    await coordinator._async_setup()
+    try:
+        await asyncio.wait_for(closed.wait(), 1)
+        assert not coordinator.last_update_success
+        assert isinstance(coordinator.last_exception, UpdateFailed)
+        assert (
+            str(coordinator.last_exception)
+            == "Eva stream closed before a home snapshot"
+        )
+    finally:
+        await coordinator.async_shutdown()
 
 
 async def test_initial_auth_failure_stops_stream(hass):

@@ -22,7 +22,6 @@ from .const import (
     DOMAIN,
     INITIAL_SNAPSHOT_TIMEOUT,
     STREAM_IDLE_TIMEOUT,
-    STREAM_REFRESH_INTERVAL,
 )
 from .events import (
     ACTION_SUCCESS_EVENTS,
@@ -176,14 +175,13 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
         return self.data
 
     async def _async_listen(self) -> None:
-        """Refresh before expiry and reconnect on failure; stop on auth failure."""
+        """Reconnect after server closure or failure; stop on auth failure."""
         backoff = 1.0
         while True:
             delay = max(backoff, self.client.retry_seconds)
             has_snapshot = False
             try:
                 async with (
-                    asyncio.timeout(STREAM_REFRESH_INTERVAL) as refresh_timeout,
                     asyncio.timeout(INITIAL_SNAPSHOT_TIMEOUT) as snapshot_timeout,
                     aclosing(
                         self.client.async_events(
@@ -239,7 +237,9 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                                 self._ready.set_result(None)
                         if has_snapshot and isinstance(event.get("id"), str):
                             self._last_event_id = event["id"]
-                raise EvaError("Eva stream closed")
+                # The server normally closes the stream after ten minutes.
+                if not has_snapshot:
+                    raise EvaError("Eva stream closed before a home snapshot")
             except EvaAuthError as err:
                 self.async_set_update_error(
                     ConfigEntryAuthFailed("Eva authentication rejected")
@@ -250,8 +250,6 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                     self.config_entry.async_start_reauth(self.hass)
                 return
             except (EvaError, InvalidEvent, TimeoutError) as err:
-                if isinstance(err, TimeoutError) and refresh_timeout.expired():
-                    continue
                 self.async_set_update_error(
                     UpdateFailed(
                         str(err)

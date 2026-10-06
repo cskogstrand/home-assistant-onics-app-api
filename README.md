@@ -76,9 +76,10 @@ Do not use a production configuration directory here.
 - One asynchronous SSE connection and shared coordinator per selected home.
 - Complete home snapshots replace state; partial attribute events retain omitted
   fields. Reconnects use the documented replay cursor.
-- Streams refresh every 9 minutes, before the API's 10-minute expiry, without
-  marking entities unavailable. A silent connection becomes unavailable after
-  15 seconds; dropped connections reconnect with backoff and the server retry delay.
+- Streams reconnect after the server's normal 10-minute close, using the same
+  client ID, replay cursor and server retry delay without marking entities
+  unavailable. A silent connection becomes unavailable after 15 seconds;
+  failed connections reconnect with backoff and the server retry delay.
 - Authentication failures request reauthentication; unloading cancels the stream.
 - Device capabilities determine entity types, regardless of vendor or model.
   Entities and device IDs include environment, home and stable API IDs. Devices
