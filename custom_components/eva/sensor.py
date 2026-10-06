@@ -45,6 +45,9 @@ async def async_setup_entry(
 
     @callback
     def add_sensors() -> None:
+        known.intersection_update(
+            {key for key in known if key[0] in coordinator.data.devices}
+        )
         entities = []
         for device_id, device in coordinator.data.devices.items():
             for description in DESCRIPTIONS:

@@ -7,6 +7,7 @@ from contextlib import aclosing, suppress
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import EvaAuthError, EvaClient, EvaError, EvaRateLimitError
@@ -103,6 +104,11 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                         state = self.data.apply(event)
                         if has_snapshot:
                             snapshot_timeout.reschedule(None)
+                            if "home" in event or event_type in {
+                                "deviceDeleted",
+                                "homeDeleted",
+                            }:
+                                self._async_remove_deleted_devices(state)
                             if state != self.data or not self.last_update_success:
                                 self.async_set_updated_data(state)
                             backoff = 1.0
@@ -131,6 +137,19 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             delay = max(delay, self.client.retry_seconds)
             await asyncio.sleep(delay)
             backoff = min(max(backoff * 2, delay), 60.0)
+
+    def _async_remove_deleted_devices(self, state: HomeState) -> None:
+        """Reconcile this entry's registry only after an authoritative update."""
+        identifiers = {
+            (DOMAIN, f"{self.config_entry.unique_id}:{device_id}")
+            for device_id in state.devices
+        }
+        registry = dr.async_get(self.hass)
+        for device in dr.async_entries_for_config_entry(
+            registry, self.config_entry.entry_id
+        ):
+            if not identifiers.intersection(device.identifiers):
+                registry.async_remove_device(device.id)
 
     async def async_shutdown(self) -> None:
         """Cancel and await the stream, closing its HTTP response on every exit."""

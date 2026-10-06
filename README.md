@@ -81,8 +81,10 @@ Do not use a production configuration directory here.
 - Authentication failures request reauthentication; unloading cancels the stream.
 - Celsius `temperature`, `airTemperature`, and `floorTemperature` attributes map
   to sensors. Entity and device IDs include environment and stable API IDs.
-  New attributes are discovered during updates; removed/offline devices become
-  unavailable. Null or invalid measurements remain unknown.
+  New devices and attributes are discovered during updates. Devices deleted in
+  Eva or absent from a complete home snapshot are removed with their entities,
+  including deletions discovered after a restart. Offline devices remain
+  registered with unavailable entities. Null or invalid measurements remain unknown.
 - This integration sends no device commands. Controls can be added later.
 
 The [App API documentation](https://onicsas.github.io/home-hla-docs/#authentication)

@@ -1,9 +1,11 @@
 """Verify the real HA entry lifecycle with sanitized, in-memory SSE events."""
 
 import asyncio
+from copy import deepcopy
 from unittest.mock import patch
 
 import aiohttp
+import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -151,3 +153,143 @@ async def test_setup_connection_failure_retries_and_cleans_up(hass):
     assert clients[0]._session.closed
     assert not hass.states.async_entity_ids("sensor")
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize("removal", ["event", "event_home", "snapshot", "reload"])
+async def test_deleted_devices_removed_offline_retained_and_readded(
+    hass, snapshot, removal
+):
+    queue = asyncio.Queue()
+    initial = snapshot
+
+    async def stream(*args):
+        yield initial
+        while True:
+            yield await queue.get()
+
+    entry = make_entry(hass)
+    with patch("custom_components.eva.api.EvaClient.async_events", new=stream):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        entities = er.async_get(hass)
+        devices = dr.async_get(hass)
+        unique_id = "test:test-home:test-device:temperature"
+        entity_id = entities.async_get_entity_id("sensor", DOMAIN, unique_id)
+        device_id = entities.async_get(entity_id).device_id
+
+        # A complete offline snapshot must keep both registry entries.
+        offline = deepcopy(snapshot)
+        offline["eventType"] = "deviceOffline"
+        offline["home"]["rooms"][0]["devices"][0]["online"] = False
+        queue.put_nowait(offline)
+        await hass.async_block_till_done()
+        assert hass.states.get(entity_id).state == "unavailable"
+        assert entities.async_get(entity_id).device_id == device_id
+        assert devices.async_get(device_id) is not None
+
+        for event_type, expected in (
+            ("deviceOnline", "21.5"),
+            ("gatewayOffline", "unavailable"),
+            ("gatewayOnline", "21.5"),
+        ):
+            queue.put_nowait({"eventType": event_type, "deviceId": "test-device"})
+            await hass.async_block_till_done()
+            assert hass.states.get(entity_id).state == expected
+            assert devices.async_get(device_id) is not None
+
+        added = deepcopy(snapshot)
+        added["eventType"] = "deviceAdded"
+        new_device = deepcopy(added["home"]["rooms"][0]["devices"][0])
+        new_device["id"] = "new-device"
+        added["home"]["rooms"][0]["devices"].append(new_device)
+        queue.put_nowait(added)
+        await hass.async_block_till_done()
+        new_entity_id = entities.async_get_entity_id(
+            "sensor", DOMAIN, "test:test-home:new-device:temperature"
+        )
+        assert hass.states.get(new_entity_id).state == "21.5"
+
+        removed = deepcopy(added)
+        removed["home"]["rooms"][0]["devices"] = [new_device]
+        if removal == "reload":
+            assert await hass.config_entries.async_unload(entry.entry_id)
+            initial = removed
+            initial["eventType"] = "initialHome"
+            assert await hass.config_entries.async_setup(entry.entry_id)
+        else:
+            if removal == "event":
+                removed = {"eventType": "deviceDeleted", "deviceId": "test-device"}
+            else:
+                removed["eventType"] = (
+                    "deviceDeleted" if removal == "event_home" else "initialHome"
+                )
+                removed["deviceId"] = "test-device"
+            queue.put_nowait(removed)
+        await hass.async_block_till_done()
+        assert devices.async_get(device_id) is None
+        assert entities.async_get(entity_id) is None
+        assert hass.states.get(entity_id) is None
+        assert hass.states.get(new_entity_id).state == "21.5"
+
+        # Repeated snapshots must restore the device exactly once.
+        queue.put_nowait(added)
+        queue.put_nowait(deepcopy(added))
+        await hass.async_block_till_done()
+        assert entities.async_get_entity_id("sensor", DOMAIN, unique_id) == entity_id
+        assert hass.states.get(entity_id).state == "21.5"
+        assert len(dr.async_entries_for_config_entry(devices, entry.entry_id)) == 2
+        assert len(er.async_entries_for_config_entry(entities, entry.entry_id)) == 2
+
+        # Replayed deletion/addition events can arrive without a pause between them.
+        queue.put_nowait({"eventType": "deviceDeleted", "deviceId": "test-device"})
+        queue.put_nowait(added)
+        await hass.async_block_till_done()
+        assert hass.states.get(entity_id).state == "21.5"
+        assert len(er.async_entries_for_config_entry(entities, entry.entry_id)) == 2
+        assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_cleanup_waits_for_valid_snapshot_and_is_scoped_to_entry(hass, snapshot):
+    queue = asyncio.Queue()
+
+    async def stream(*args):
+        while True:
+            yield await queue.get()
+
+    entry = make_entry(hass)
+    other_entry = make_entry(hass, "prod")
+    devices = dr.async_get(hass)
+    entities = er.async_get(hass)
+    stale = devices.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, "test:test-home:deleted-device")},
+    )
+    stale_entity = entities.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "test:test-home:deleted-device:temperature",
+        config_entry=entry,
+        device_id=stale.id,
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+    other = devices.async_get_or_create(
+        config_entry_id=other_entry.entry_id,
+        identifiers={(DOMAIN, "prod:test-home:deleted-device")},
+    )
+    with (
+        patch("custom_components.eva.api.EvaClient.async_events", new=stream),
+        patch("custom_components.eva.coordinator.INITIAL_SNAPSHOT_TIMEOUT", 0.05),
+    ):
+        queue.put_nowait({"eventType": "initialHome", "home": {"id": "test-home"}})
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        assert devices.async_get(stale.id) is not None
+        assert entities.async_get(stale_entity.entity_id) is not None
+
+        queue.put_nowait(snapshot)
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert devices.async_get(stale.id) is None
+        assert entities.async_get(stale_entity.entity_id) is None
+        assert devices.async_get(other.id) is not None
+        assert await hass.config_entries.async_unload(entry.entry_id)
