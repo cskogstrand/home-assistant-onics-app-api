@@ -9,6 +9,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eva.api import EvaAuthError, EvaClient, EvaError
+from custom_components.eva.const import STREAM_REFRESH_INTERVAL
 from custom_components.eva.coordinator import EvaCoordinator
 from custom_components.eva.sensor import DESCRIPTIONS, EvaSensor
 
@@ -89,6 +90,55 @@ async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
     unsub()
     await coordinator.async_shutdown()
     assert closed.is_set()
+    assert coordinator._task is None
+
+
+async def test_stream_refresh_preserves_availability_cursor_and_closes_stream(
+    hass, snapshot, caplog
+):
+    assert 0 < STREAM_REFRESH_INTERVAL < 10 * 60
+    connections = asyncio.Queue()
+    closed = []
+
+    async def stream(home_id, client_id, last_seen_event_id):
+        connection = coordinator.client.async_events.call_count
+        connections.put_nowait((home_id, client_id, last_seen_event_id))
+        try:
+            yield snapshot
+            while True:
+                yield {"eventType": "keepAlive", "id": f"test-event-{connection}"}
+                await asyncio.sleep(0.005)
+        finally:
+            closed.append(connection)
+
+    coordinator = make_coordinator(hass, stream)
+    coordinator.client.retry_seconds = 60
+    sensor = EvaSensor(coordinator, "test-device", DESCRIPTIONS[0])
+    with (
+        patch("custom_components.eva.coordinator.STREAM_REFRESH_INTERVAL", 0.05),
+        patch.object(
+            coordinator,
+            "async_set_update_error",
+            wraps=coordinator.async_set_update_error,
+        ) as update_error,
+    ):
+        await coordinator._async_setup()
+        try:
+            await coordinator._async_update_data()
+            for connection in range(1, 4):
+                assert await asyncio.wait_for(connections.get(), 1) == (
+                    "test-home",
+                    "test-client",
+                    None if connection == 1 else f"test-event-{connection - 1}",
+                )
+                assert closed == list(range(1, connection))
+                assert sensor.available
+                assert sensor.native_value == 21.5
+            update_error.assert_not_called()
+            assert "Error requesting eva data" not in caplog.text
+        finally:
+            await coordinator.async_shutdown()
+    assert closed == [1, 2, 3]
     assert coordinator._task is None
 
 

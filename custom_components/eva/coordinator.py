@@ -22,6 +22,7 @@ from .const import (
     DOMAIN,
     INITIAL_SNAPSHOT_TIMEOUT,
     STREAM_IDLE_TIMEOUT,
+    STREAM_REFRESH_INTERVAL,
 )
 from .state import HomeState, InvalidEvent
 
@@ -175,13 +176,14 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
         return self.data
 
     async def _async_listen(self) -> None:
-        """Reconnect after EOF, silence or network failure; stop on auth failure."""
+        """Refresh before expiry and reconnect on failure; stop on auth failure."""
         backoff = 1.0
         while True:
             delay = max(backoff, self.client.retry_seconds)
             has_snapshot = False
             try:
                 async with (
+                    asyncio.timeout(STREAM_REFRESH_INTERVAL) as refresh_timeout,
                     asyncio.timeout(INITIAL_SNAPSHOT_TIMEOUT) as snapshot_timeout,
                     aclosing(
                         self.client.async_events(
@@ -238,6 +240,8 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                     self.config_entry.async_start_reauth(self.hass)
                 return
             except (EvaError, InvalidEvent, TimeoutError) as err:
+                if isinstance(err, TimeoutError) and refresh_timeout.expired():
+                    continue
                 self.async_set_update_error(
                     UpdateFailed(str(err) or "Timed out waiting for a home snapshot")
                 )
