@@ -1,7 +1,7 @@
-"""Apply the documented home snapshots and partial device attribute events."""
+"""Apply authoritative snapshots and partial SSE updates without retaining users."""
 
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 
@@ -11,61 +11,149 @@ class InvalidEvent(ValueError):
 
 @dataclass(frozen=True)
 class HomeState:
-    """Only the home state needed by the sensor platform; no user or address data."""
+    """Only entity state and metadata; no user, address or PIN data."""
 
     home_id: str
     devices: dict[str, dict[str, Any]]
     gateway_online: bool
+    moods: dict[str, dict[str, str]] = field(default_factory=dict)
+    alarm: dict[str, Any] = field(default_factory=dict)
 
     def apply(self, event: dict[str, Any]) -> HomeState:
-        """Replace complete snapshots; merge only supplied attribute fields."""
+        """Replace snapshots; merge only the fields actually supplied in events."""
         if "home" in event:
             home = event["home"]
             if not isinstance(home, dict) or home.get("id") != self.home_id:
                 raise InvalidEvent("Snapshot does not match the selected home")
-            rooms = home.get("rooms")
-            gateway = home.get("gateway")
+            rooms, gateway = home.get("rooms"), home.get("gateway")
             if not isinstance(rooms, list) or not isinstance(gateway, dict):
                 raise InvalidEvent("Invalid home snapshot")
-            devices = {}
-            for room in rooms:
-                if not isinstance(room, dict) or not isinstance(
-                    room.get("devices"), list
-                ):
+            devices, moods = {}, {}
+            for container in [home, *rooms]:
+                if not isinstance(container, dict):
                     raise InvalidEvent("Invalid room in snapshot")
-                for device in room["devices"]:
-                    if not isinstance(device, dict) or not isinstance(
-                        device.get("id"), str
+                entries = container.get("moods", [])
+                if not isinstance(entries, list):
+                    raise InvalidEvent("Invalid moods")
+                for mood in entries:
+                    if not isinstance(mood, dict) or not isinstance(
+                        mood.get("id"), str
                     ):
-                        raise InvalidEvent("Invalid device in snapshot")
-                    attributes = device.get("attributes")
-                    if not isinstance(attributes, list) or any(
-                        not isinstance(attribute, dict)
-                        or not isinstance(attribute.get("name"), str)
-                        for attribute in attributes
-                    ):
-                        raise InvalidEvent("Invalid device attributes")
-                    devices[device["id"]] = {
-                        **deepcopy(device),
-                        "attributes": {
-                            attribute["name"]: deepcopy(attribute)
+                        raise InvalidEvent("Invalid mood")
+                    moods[mood["id"]] = {"name": mood.get("name", mood["id"])}
+            for room in rooms:
+                for resource in ("devices", "groups"):
+                    entries = room.get(resource, [] if resource == "groups" else None)
+                    if not isinstance(entries, list):
+                        raise InvalidEvent("Invalid room devices or groups")
+                    for device in entries:
+                        if not isinstance(device, dict) or type(
+                            device.get("id")
+                        ) is not (int if resource == "groups" else str):
+                            raise InvalidEvent("Invalid device in snapshot")
+                        attributes = device.get(
+                            "attributes", [] if device.get("external") is True else None
+                        )
+                        if not isinstance(attributes, list) or any(
+                            not isinstance(attribute, dict)
+                            or not isinstance(attribute.get("name"), str)
                             for attribute in attributes
-                        },
-                        "room_name": room.get("name"),
-                    }
-            return HomeState(self.home_id, devices, gateway.get("online") is True)
+                        ):
+                            raise InvalidEvent("Invalid device attributes")
+                        device_id = (
+                            f"group:{device['id']}"
+                            if resource == "groups"
+                            else device["id"]
+                        )
+                        devices[device_id] = {
+                            **deepcopy(device),
+                            "resource": resource,
+                            "attributes": {
+                                attribute["name"]: deepcopy(attribute)
+                                for attribute in attributes
+                            },
+                            "room_name": room.get("name"),
+                        }
+            profile = home.get("activeProfile")
+            settings = home.get("settings") or {}
+            if not isinstance(settings, dict) or not isinstance(
+                settings.get("alarm", {}), dict
+            ):
+                raise InvalidEvent("Invalid alarm settings")
+            alarm = {}
+            if isinstance(profile, dict):
+                alarm = {
+                    "mode": profile.get("mode"),
+                    "pin_required": settings.get("alarm", {}).get("pinRequired")
+                    is True,
+                }
+            return HomeState(
+                self.home_id, devices, gateway.get("online") is True, moods, alarm
+            )
 
         event_type = event.get("eventType")
         if event_type == "homeDeleted":
             return HomeState(self.home_id, {}, False)
         if event_type in {"gatewayOnline", "gatewayOffline"}:
             return replace(self, gateway_online=event_type == "gatewayOnline")
+        if event_type in {"activeProfileUpdated", "activeProfileExitTimeExpired"}:
+            profile = event.get("activeProfile")
+            if not isinstance(profile, dict):
+                raise InvalidEvent("Invalid alarm profile")
+            return replace(
+                self,
+                alarm={
+                    "mode": profile.get("mode"),
+                    "pin_required": self.alarm.get("pin_required", False),
+                    "exit_at": event.get("estimatedExitDelayExpiresAt"),
+                },
+            )
+        if event_type == "activeProfileEntryTimeStarted":
+            return replace(
+                self,
+                alarm={
+                    **self.alarm,
+                    "entry_at": event.get("estimatedEntryDelayExpiresAt"),
+                },
+            )
         device_id = event.get("deviceId")
+        if event_type in {
+            "groupAttributeChanged",
+            "groupAttributeReport",
+            "groupOnline",
+            "groupOffline",
+            "groupDeleted",
+        }:
+            device_id = f"group:{event.get('groupId')}"
+            event_type = event_type.replace("group", "device", 1)
         if not isinstance(device_id, str):
             return self
         if event_type == "deviceDeleted":
             return replace(
                 self, devices={k: v for k, v in self.devices.items() if k != device_id}
+            )
+        if event_type in {
+            "deviceSoftwareUpdateAssigned",
+            "deviceSoftwareUpdateInProgress",
+            "deviceSoftwareUpdateFailed",
+        }:
+            if device_id not in self.devices or not isinstance(
+                event.get("softwareUpdate"), dict
+            ):
+                raise InvalidEvent("Invalid device firmware update")
+            device = self.devices[device_id]
+            return replace(
+                self,
+                devices={
+                    **self.devices,
+                    device_id: {
+                        **device,
+                        "softwareUpdate": {
+                            **(device.get("softwareUpdate") or {}),
+                            **deepcopy(event["softwareUpdate"]),
+                        },
+                    },
+                },
             )
         if event_type not in {
             "deviceAttributeChanged",
@@ -75,7 +163,6 @@ class HomeState:
         }:
             return self
         if device_id not in self.devices:
-            # An incomplete replay must be followed by a fresh snapshot.
             raise InvalidEvent("Event references an unknown device")
         device = self.devices[device_id]
         if event_type in {"deviceOnline", "deviceOffline"}:
@@ -84,8 +171,6 @@ class HomeState:
             name = event.get("name")
             if not isinstance(name, str):
                 raise InvalidEvent("Attribute event has no name")
-            # Exclude event-envelope fields; retain all supplied attribute fields,
-            # including future attribute metadata, explicit nulls and false values.
             fields = {
                 key: value
                 for key, value in event.items()
@@ -100,6 +185,7 @@ class HomeState:
                     "userEmail",
                     "homeId",
                     "groupIds",
+                    "groupId",
                 }
             }
             attributes = device["attributes"]

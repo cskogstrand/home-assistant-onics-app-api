@@ -1,6 +1,7 @@
-"""Asynchronous, read-only transport for the documented Eva App API."""
+"""Asynchronous transport for the documented Eva App API."""
 
 import json
+import math
 from collections.abc import AsyncIterator
 from typing import Any
 from urllib.parse import quote
@@ -69,14 +70,52 @@ class EvaClient:
         self.retry_seconds = 5.0
 
     @staticmethod
-    def _check_response(response: aiohttp.ClientResponse) -> None:
+    def _check_response(
+        response: aiohttp.ClientResponse, statuses: tuple[int, ...] = (200,)
+    ) -> None:
         if response.status in {401, 403}:
             raise EvaAuthError("Authentication or home access rejected")
         if response.status == 429:
             delay = response.headers.get("Retry-After", "60")
             raise EvaRateLimitError(float(delay) if delay.isdecimal() else 60)
-        if response.status != 200:
+        if response.status not in statuses:
             raise EvaError(f"Eva returned HTTP {response.status}")
+
+    async def async_command(
+        self,
+        home_id: str,
+        method: str,
+        parts: tuple[str, ...],
+        payload: dict | None = None,
+    ) -> str | None:
+        """Send a command; never retry a write or follow an authenticated redirect."""
+        if not home_id or method not in {"PATCH", "POST"}:
+            raise ValueError("Invalid command")
+        path = "/".join(quote(part, safe="") for part in ("homes", home_id, *parts))
+        try:
+            async with self._session.request(
+                method,
+                f"{self._base_url}/{path}",
+                headers={**self._headers, "X-Partition-Key": home_id[-1]},
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30),
+                allow_redirects=False,
+            ) as response:
+                self._check_response(response, (200, 202, 204))
+                if response.status == 204:
+                    return None
+                body = await response.read()
+                if not body:
+                    return None
+                result = json.loads(body)
+                if not isinstance(result, dict):
+                    raise EvaError("Invalid command response")
+                action_id = result.get("actionId")
+                if action_id is not None and not isinstance(action_id, str):
+                    raise EvaError("Invalid command response")
+                return action_id
+        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+            raise EvaError("Eva command request failed") from err
 
     async def async_get_homes(self) -> list[dict[str, str]]:
         """List only home IDs and names, for either documented response shape."""
@@ -101,6 +140,46 @@ class EvaClient:
             return [{"id": home["id"], "name": home["name"]} for home in homes]
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
             raise EvaError("Unable to read the home list") from err
+
+    async def async_get_charger_status(self, home_id: str, device_id: str) -> dict:
+        """External chargers report separately from the home's SSE attributes."""
+        path = "/".join(
+            quote(part, safe="")
+            for part in (
+                "homes",
+                home_id,
+                "devices",
+                device_id,
+                "external",
+                "evCharger",
+                "status",
+            )
+        )
+        try:
+            async with self._session.get(
+                f"{self._base_url}/{path}",
+                headers={**self._headers, "X-Partition-Key": home_id[-1]},
+                timeout=aiohttp.ClientTimeout(total=30),
+                allow_redirects=False,
+            ) as response:
+                self._check_response(response, (200, 202))
+                payload = await response.json()
+                if (
+                    not isinstance(payload, dict)
+                    or any(
+                        type(payload.get(key)) is not bool
+                        for key in ("carPluggedIn", "charging")
+                    )
+                    or type(payload.get("currentPower")) not in (int, float)
+                    or not math.isfinite(payload["currentPower"])
+                ):
+                    raise EvaError("Invalid external charger status")
+                return {
+                    key: payload[key]
+                    for key in ("carPluggedIn", "charging", "currentPower")
+                }
+        except (aiohttp.ClientError, TimeoutError, ValueError, OverflowError) as err:
+            raise EvaError("Unable to read external charger status") from err
 
     async def async_events(
         self,

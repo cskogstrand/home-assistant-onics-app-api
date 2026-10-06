@@ -8,7 +8,22 @@ from .api import EvaClient
 from .const import CONF_ENVIRONMENT, ENVIRONMENTS
 from .coordinator import EvaConfigEntry, EvaCoordinator
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [
+    Platform.ALARM_CONTROL_PANEL,
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.CLIMATE,
+    Platform.COVER,
+    Platform.LIGHT,
+    Platform.LOCK,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SCENE,
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.TEXT,
+    Platform.UPDATE,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: EvaConfigEntry) -> bool:

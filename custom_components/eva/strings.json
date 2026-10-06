@@ -11,19 +11,25 @@
         "sections": {
           "advanced": {
             "name": "Advanced",
-            "data": {"environment": "Environment"}
+            "data": {
+              "environment": "Environment"
+            }
           }
         }
       },
       "home": {
         "title": "Select a home",
         "description": "Choose the home to connect to Home Assistant.",
-        "data": {"home_id": "Home"}
+        "data": {
+          "home_id": "Home"
+        }
       },
       "reauth_confirm": {
         "title": "Sign in again",
         "description": "Enter the current password for {username} in {environment}. Your selected home will stay the same.",
-        "data": {"password": "Password"}
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -42,9 +48,442 @@
   },
   "entity": {
     "sensor": {
-      "temperature": {"name": "Temperature"},
-      "air_temperature": {"name": "Air temperature"},
-      "floor_temperature": {"name": "Floor temperature"}
+      "temperature": {
+        "name": "Temperature"
+      },
+      "air_temperature": {
+        "name": "Air temperature"
+      },
+      "floor_temperature": {
+        "name": "Floor temperature"
+      },
+      "relative_humidity": {
+        "name": "Relative humidity"
+      },
+      "relative_humidity_min": {
+        "name": "Relative humidity min"
+      },
+      "relative_humidity_max": {
+        "name": "Relative humidity max"
+      },
+      "pressure": {
+        "name": "Pressure"
+      },
+      "pressure_min": {
+        "name": "Pressure min"
+      },
+      "pressure_max": {
+        "name": "Pressure max"
+      },
+      "illuminance": {
+        "name": "Illuminance"
+      },
+      "illuminance_min": {
+        "name": "Illuminance min"
+      },
+      "illuminance_max": {
+        "name": "Illuminance max"
+      },
+      "co2_concentration": {
+        "name": "CO₂ concentration"
+      },
+      "tvoc_concentration": {
+        "name": "TVOC concentration"
+      },
+      "battery_percentage": {
+        "name": "Battery percentage"
+      },
+      "rssi": {
+        "name": "RSSI"
+      },
+      "ac_neutral_current": {
+        "name": "AC neutral current"
+      },
+      "phase1current": {
+        "name": "Phase1current"
+      },
+      "phase2current": {
+        "name": "Phase2current"
+      },
+      "phase3current": {
+        "name": "Phase3current"
+      },
+      "ac_total_power": {
+        "name": "AC total power"
+      },
+      "electricity_consumption": {
+        "name": "Electricity consumption"
+      },
+      "ac_total_reactive_power": {
+        "name": "AC total reactive power"
+      },
+      "ac_total_apparent_power": {
+        "name": "AC total apparent power"
+      },
+      "ac_voltage": {
+        "name": "AC voltage"
+      },
+      "ac_voltage_min": {
+        "name": "AC voltage min"
+      },
+      "ac_voltage_max": {
+        "name": "AC voltage max"
+      },
+      "ac_current": {
+        "name": "AC current"
+      },
+      "ac_current_min": {
+        "name": "AC current min"
+      },
+      "ac_current_max": {
+        "name": "AC current max"
+      },
+      "ac_power": {
+        "name": "AC power"
+      },
+      "ac_power_min": {
+        "name": "AC power min"
+      },
+      "ac_power_max": {
+        "name": "AC power max"
+      },
+      "dc_voltage": {
+        "name": "DC voltage"
+      },
+      "dc_voltage_min": {
+        "name": "DC voltage min"
+      },
+      "dc_voltage_max": {
+        "name": "DC voltage max"
+      },
+      "dc_current": {
+        "name": "DC current"
+      },
+      "dc_current_min": {
+        "name": "DC current min"
+      },
+      "dc_current_max": {
+        "name": "DC current max"
+      },
+      "dc_power": {
+        "name": "DC power"
+      },
+      "dc_power_min": {
+        "name": "DC power min"
+      },
+      "dc_power_max": {
+        "name": "DC power max"
+      },
+      "electricity_consumption_summary": {
+        "name": "Electricity consumption summary"
+      },
+      "electricity_consumption_current_hour_measured": {
+        "name": "Electricity consumption current hour measured"
+      },
+      "electricity_consumption_current_hour_estimate": {
+        "name": "Electricity consumption current hour estimate"
+      },
+      "water_consumption_summary": {
+        "name": "Water consumption summary"
+      },
+      "water_consumption": {
+        "name": "Water consumption"
+      },
+      "electricity_meter_serial_number": {
+        "name": "Electricity meter serial number"
+      },
+      "status_type": {
+        "name": "Status type"
+      },
+      "status_message": {
+        "name": "Status message"
+      },
+      "status_details": {
+        "name": "Status details"
+      },
+      "color_mode": {
+        "name": "Color mode"
+      },
+      "window_cover_lift_position": {
+        "name": "Window cover lift position"
+      },
+      "window_cover_tilt_position": {
+        "name": "Window cover tilt position"
+      },
+      "minutes_until_off": {
+        "name": "Minutes until off"
+      },
+      "on_time": {
+        "name": "On time"
+      },
+      "installed_load": {
+        "name": "Installed load"
+      },
+      "regulator_time": {
+        "name": "Regulator time"
+      },
+      "max_floor_temperature": {
+        "name": "Max floor temperature"
+      },
+      "temperature_calibration": {
+        "name": "Temperature calibration"
+      },
+      "sensitivity_level": {
+        "name": "Sensitivity level"
+      },
+      "no_presence_delay": {
+        "name": "No presence delay"
+      },
+      "auto_relock_time": {
+        "name": "Auto relock time"
+      },
+      "power_level": {
+        "name": "Power level"
+      },
+      "charge_current": {
+        "name": "Charge current"
+      },
+      "temperature_threshold_min": {
+        "name": "Temperature threshold min"
+      },
+      "temperature_threshold_max": {
+        "name": "Temperature threshold max"
+      },
+      "relative_humidity_threshold_min": {
+        "name": "Relative humidity threshold min"
+      },
+      "relative_humidity_threshold_max": {
+        "name": "Relative humidity threshold max"
+      },
+      "regulator_fallback": {
+        "name": "Regulator fallback"
+      },
+      "electricity_consumption_threshold": {
+        "name": "Electricity consumption threshold"
+      },
+      "startup_on_off": {
+        "name": "Startup on off"
+      },
+      "mode": {
+        "name": "Mode"
+      },
+      "sensor": {
+        "name": "Sensor"
+      },
+      "lock_mode": {
+        "name": "Lock mode"
+      },
+      "door_lock_volume": {
+        "name": "Door lock volume"
+      },
+      "current_power": {
+        "name": "Current power"
+      }
+    },
+    "binary_sensor": {
+      "low_battery": {
+        "name": "Low battery"
+      },
+      "battery_defect": {
+        "name": "Battery defect"
+      },
+      "ac_fault": {
+        "name": "AC fault"
+      },
+      "bolt_jammed": {
+        "name": "Bolt jammed"
+      },
+      "tampered": {
+        "name": "Tampered"
+      },
+      "movement": {
+        "name": "Movement"
+      },
+      "presence_indication": {
+        "name": "Presence indication"
+      },
+      "open": {
+        "name": "Open"
+      },
+      "fire_indication": {
+        "name": "Fire indication"
+      },
+      "water_overflow_indication": {
+        "name": "Water overflow indication"
+      },
+      "carbon_monoxide_indication": {
+        "name": "Carbon monoxide indication"
+      },
+      "vibration": {
+        "name": "Vibration"
+      },
+      "heating": {
+        "name": "Heating"
+      },
+      "cooking_indication": {
+        "name": "Cooking indication"
+      },
+      "fall_or_concussion": {
+        "name": "Fall or concussion"
+      },
+      "panic": {
+        "name": "Panic"
+      },
+      "emergency": {
+        "name": "Emergency"
+      },
+      "glass_breakage_detected": {
+        "name": "Glass breakage detected"
+      },
+      "car_plugged_in": {
+        "name": "Car plugged in"
+      }
+    },
+    "switch": {
+      "on": {
+        "name": "On"
+      },
+      "child_lock": {
+        "name": "Child lock"
+      },
+      "relock": {
+        "name": "Relock"
+      },
+      "frost_and_heat_guard": {
+        "name": "Frost and heat guard"
+      },
+      "show_temperature": {
+        "name": "Show temperature"
+      },
+      "room_thermometer": {
+        "name": "Room thermometer"
+      },
+      "show_tvoc_concentration": {
+        "name": "Show tvoc concentration"
+      },
+      "room_tvoc_concentration": {
+        "name": "Room tvoc concentration"
+      },
+      "relative_humidity_guard": {
+        "name": "Relative humidity guard"
+      },
+      "part_of_alarm_system": {
+        "name": "Part of alarm system"
+      },
+      "mood_button2_enabled": {
+        "name": "Mood button2 enabled"
+      },
+      "charging": {
+        "name": "Charging"
+      }
+    },
+    "number": {
+      "window_cover_lift_position": {
+        "name": "Window cover lift position"
+      },
+      "window_cover_tilt_position": {
+        "name": "Window cover tilt position"
+      },
+      "minutes_until_off": {
+        "name": "Minutes until off"
+      },
+      "on_time": {
+        "name": "On time"
+      },
+      "installed_load": {
+        "name": "Installed load"
+      },
+      "regulator_time": {
+        "name": "Regulator time"
+      },
+      "max_floor_temperature": {
+        "name": "Max floor temperature"
+      },
+      "temperature_calibration": {
+        "name": "Temperature calibration"
+      },
+      "sensitivity_level": {
+        "name": "Sensitivity level"
+      },
+      "no_presence_delay": {
+        "name": "No presence delay"
+      },
+      "auto_relock_time": {
+        "name": "Auto relock time"
+      },
+      "power_level": {
+        "name": "Power level"
+      },
+      "charge_current": {
+        "name": "Charge current"
+      },
+      "temperature_threshold_min": {
+        "name": "Temperature threshold min"
+      },
+      "temperature_threshold_max": {
+        "name": "Temperature threshold max"
+      },
+      "relative_humidity_threshold_min": {
+        "name": "Relative humidity threshold min"
+      },
+      "relative_humidity_threshold_max": {
+        "name": "Relative humidity threshold max"
+      },
+      "regulator_fallback": {
+        "name": "Regulator fallback"
+      },
+      "electricity_consumption_threshold": {
+        "name": "Electricity consumption threshold"
+      }
+    },
+    "select": {
+      "startup_on_off": {
+        "name": "Startup on off"
+      },
+      "mode": {
+        "name": "Mode"
+      },
+      "sensor": {
+        "name": "Sensor"
+      },
+      "lock_mode": {
+        "name": "Lock mode"
+      },
+      "door_lock_volume": {
+        "name": "Door lock volume"
+      }
+    },
+    "text": {
+      "display_text": {
+        "name": "Display text"
+      },
+      "mood_button1": {
+        "name": "Mood button1"
+      },
+      "mood_button2": {
+        "name": "Mood button2"
+      },
+      "mood_button3": {
+        "name": "Mood button3"
+      },
+      "mood_button4": {
+        "name": "Mood button4"
+      }
+    },
+    "button": {
+      "identify": {
+        "name": "Identify"
+      }
+    },
+    "update": {
+      "firmware": {
+        "name": "Firmware"
+      }
+    },
+    "alarm_control_panel": {
+      "alarm": {
+        "name": "Alarm"
+      }
     }
   }
 }

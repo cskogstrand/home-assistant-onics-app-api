@@ -1,127 +1,87 @@
-"""Read-only temperature sensors backed exclusively by Eva state."""
-
-import math
+"""Measurements and read-only fallbacks for every Eva attribute."""
 
 from homeassistant.components.sensor import (
-    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.const import EntityCategory
 
-from .const import DOMAIN
-from .coordinator import EvaConfigEntry, EvaCoordinator
+from .capabilities import ATTRIBUTES, Attribute, number, platform_for
+from .entity import EvaAttributeEntity, async_discover, translation_key
 
-DESCRIPTIONS = tuple(
-    SensorEntityDescription(
-        key=key,
-        translation_key=translation_key,
-        device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        state_class=SensorStateClass.MEASUREMENT,
-    )
-    for key, translation_key in (
-        ("temperature", "temperature"),
-        ("airTemperature", "air_temperature"),
-        ("floorTemperature", "floor_temperature"),
-    )
-)
 PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: EvaConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Add discovered attributes, including those introduced by later snapshots."""
-    coordinator = entry.runtime_data
-    known: set[tuple[str, str]] = set()
-
-    @callback
-    def add_sensors() -> None:
-        known.intersection_update(
-            {key for key in known if key[0] in coordinator.data.devices}
-        )
-        entities = []
-        for device_id, device in coordinator.data.devices.items():
-            for description in DESCRIPTIONS:
-                key = (device_id, description.key)
-                if description.key in device["attributes"] and key not in known:
-                    known.add(key)
-                    entities.append(
-                        EvaTemperatureSensor(coordinator, device_id, description)
-                    )
-        async_add_entities(entities)
-
-    add_sensors()
-    entry.async_on_unload(coordinator.async_add_listener(add_sensors))
+def description(key):
+    """Keep existing temperature identities while adding measured capabilities."""
+    spec = ATTRIBUTES.get(key, Attribute(kind=object))
+    state_class = None
+    if spec.platform == "sensor" and spec.kind in (int, float):
+        state_class = SensorStateClass.MEASUREMENT
+        if key in {"electricityConsumptionSummary", "waterConsumptionSummary"}:
+            state_class = SensorStateClass.TOTAL_INCREASING
+        elif key.startswith("electricityConsumptionCurrentHour"):
+            state_class = (
+                None  # Rolling hourly values are not cumulative meter readings.
+            )
+    return SensorEntityDescription(
+        key=key,
+        translation_key=translation_key(key) if key in ATTRIBUTES else None,
+        name=None if key in ATTRIBUTES else key,
+        native_unit_of_measurement=spec.unit,
+        device_class=spec.device_class if spec.platform == "sensor" else None,
+        state_class=state_class,
+        entity_category=EntityCategory.DIAGNOSTIC if spec.diagnostic else None,
+    )
 
 
-class EvaTemperatureSensor(CoordinatorEntity[EvaCoordinator], SensorEntity):
-    """A stable environment/home/device/attribute identity."""
+DESCRIPTIONS = tuple(
+    description(key) for key in ("temperature", "airTemperature", "floorTemperature")
+)
 
-    _attr_has_entity_name = True
 
-    def __init__(
-        self,
-        coordinator: EvaCoordinator,
-        device_id: str,
-        description: SensorEntityDescription,
-    ) -> None:
-        """Describe a measured attribute present in an actual device snapshot."""
-        super().__init__(coordinator)
-        self._device_id = device_id
-        self.entity_description = description
-        self._attr_unique_id = (
-            f"{coordinator.config_entry.unique_id}:{device_id}:{description.key}"
-        )
+async def async_setup_entry(hass, entry, async_add_entities):
+    async_discover(
+        entry,
+        async_add_entities,
+        lambda coordinator, device_id, device: (
+            EvaSensor(coordinator, device_id, description(key))
+            for key in device["attributes"]
+            if platform_for(device, key) == "sensor"
+        ),
+    )
+
+
+class EvaSensor(EvaAttributeEntity, SensorEntity):
+    """Use real measurements and retain unknown scalar attributes without controls."""
 
     @property
-    def device_info(self) -> DeviceInfo:
-        """Use API device identity and metadata, never the account's credentials."""
-        device = self.coordinator.data.devices.get(self._device_id, {})
-        return DeviceInfo(
-            identifiers={
-                (DOMAIN, f"{self.coordinator.config_entry.unique_id}:{self._device_id}")
-            },
-            name=device.get("name"),
-            manufacturer=device.get("vendor"),
-            model=device.get("model"),
-            sw_version=device.get("softwareVersion"),
-            suggested_area=device.get("room_name"),
-        )
-
-    @property
-    def available(self) -> bool:
-        """Disconnects, offline devices, and removed attributes are unavailable."""
-        state = self.coordinator.data
-        device = state.devices.get(self._device_id, {})
+    def available(self):
         return (
             super().available
-            and state.gateway_online
-            and device.get("online") is True
-            and self.entity_description.key in device.get("attributes", {})
+            and platform_for(self.device, self.entity_description.key) == "sensor"
         )
 
     @property
-    def native_value(self) -> float | None:
-        """Null and invalid readings stay unknown; never fabricate measurements."""
-        device = self.coordinator.data.devices.get(self._device_id, {})
-        value = (
-            device.get("attributes", {})
-            .get(self.entity_description.key, {})
-            .get("value")
+    def native_value(self):
+        key = self.entity_description.key
+        value = self.attribute_value(key)
+        spec = ATTRIBUTES.get(key)
+        if spec is not None:
+            if spec.kind in (float, int):
+                return number(value)
+            if spec.kind is str:
+                return value[:255] if isinstance(value, str) else None
+        if type(value) is bool:
+            return str(value).lower()
+        if isinstance(value, str):
+            return value[:255]
+        return number(value)
+
+    @property
+    def native_unit_of_measurement(self):
+        unit = self.attributes.get(self.entity_description.key, {}).get("unit")
+        return self.entity_description.native_unit_of_measurement or (
+            unit if isinstance(unit, str) else None
         )
-        if (
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and math.isfinite(value)
-        ):
-            return value
-        return None

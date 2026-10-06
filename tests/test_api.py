@@ -130,3 +130,67 @@ async def test_home_list_retains_only_identity_and_name(payload):
 def test_base_url_rejects_unsafe_or_ambiguous_settings(url):
     with pytest.raises(ValueError):
         validate_base_url(url)
+
+
+@pytest.mark.parametrize("status", [200, 202, 204])
+async def test_command_method_escaping_headers_and_success(status):
+    client, session, response = make_client(status=status)
+    session.request.return_value.__aenter__ = AsyncMock(return_value=response)
+    session.request.return_value.__aexit__ = AsyncMock(return_value=False)
+    response.read = AsyncMock(return_value=b'{"actionId":"test-action"}')
+    assert await client.async_command(
+        "home/id",
+        "PATCH",
+        ("devices", "device/id", "attributes", "displayText", "a/b ?#"),
+    ) == (None if status == 204 else "test-action")
+    args, kwargs = session.request.call_args
+    assert args == (
+        "PATCH",
+        "https://api.example.invalid/prefix/homes/home%2Fid/devices/device%2Fid/attributes/displayText/a%2Fb%20%3F%23",
+    )
+    assert kwargs["headers"]["X-Partition-Key"] == "d"
+    assert kwargs["headers"]["X-Schema-Version"] == "7"
+    assert kwargs["allow_redirects"] is False
+    assert kwargs["timeout"].total == 30
+    session.request.return_value.__aexit__.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "status,error",
+    [(401, EvaAuthError), (429, EvaRateLimitError), (302, EvaError), (500, EvaError)],
+)
+async def test_command_errors_are_not_retried(status, error):
+    client, session, response = make_client(status=status)
+    session.request.return_value.__aenter__ = AsyncMock(return_value=response)
+    session.request.return_value.__aexit__ = AsyncMock(return_value=False)
+    with pytest.raises(error):
+        await client.async_command(
+            "test-home", "POST", ("devices", "test-device", "identify")
+        )
+    assert session.request.call_count == 1
+    session.request.return_value.__aexit__.assert_awaited_once()
+
+
+async def test_external_charger_status_validation():
+    client, session, response = make_client(
+        status=202,
+        payload={
+            "carPluggedIn": True,
+            "charging": False,
+            "currentPower": 0,
+            "ignored": "private",
+        },
+    )
+    assert await client.async_get_charger_status("test-home", "test-device") == {
+        "carPluggedIn": True,
+        "charging": False,
+        "currentPower": 0,
+    }
+    assert session.get.call_args.args[0].endswith("/external/evCharger/status")
+    response.json.return_value = {
+        "carPluggedIn": "true",
+        "charging": False,
+        "currentPower": 0,
+    }
+    with pytest.raises(EvaError):
+        await client.async_get_charger_status("test-home", "test-device")

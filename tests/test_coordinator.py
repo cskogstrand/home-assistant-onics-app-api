@@ -10,7 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eva.api import EvaAuthError, EvaClient, EvaError
 from custom_components.eva.coordinator import EvaCoordinator
-from custom_components.eva.sensor import DESCRIPTIONS, EvaTemperatureSensor
+from custom_components.eva.sensor import DESCRIPTIONS, EvaSensor
 
 
 def make_coordinator(hass, events):
@@ -50,7 +50,7 @@ async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
     changed = asyncio.Event()
     unsub = coordinator.async_add_listener(changed.set)
     await coordinator._async_setup()
-    sensor = EvaTemperatureSensor(coordinator, "test-device", DESCRIPTIONS[0])
+    sensor = EvaSensor(coordinator, "test-device", DESCRIPTIONS[0])
     assert not sensor.available
     assert await connections.get() == ("test-home", "test-client", None)
     queue.put_nowait(snapshot)
@@ -186,5 +186,5 @@ def test_invalid_temperature_is_unknown(hass, snapshot, value):
     coordinator.data.devices["test-device"]["attributes"]["temperature"]["value"] = (
         value
     )
-    sensor = EvaTemperatureSensor(coordinator, "test-device", DESCRIPTIONS[0])
+    sensor = EvaSensor(coordinator, "test-device", DESCRIPTIONS[0])
     assert sensor.native_value is None

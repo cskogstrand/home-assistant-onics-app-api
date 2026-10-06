@@ -2,11 +2,16 @@
 
 import asyncio
 import logging
+from collections.abc import Callable
 from contextlib import aclosing, suppress
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryError,
+    HomeAssistantError,
+)
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -26,7 +31,7 @@ type EvaConfigEntry = ConfigEntry[EvaCoordinator]
 
 
 class EvaCoordinator(DataUpdateCoordinator[HomeState]):
-    """Replace snapshots and publish partial updates without polling."""
+    """Share SSE state plus the separate external-charger status endpoint."""
 
     def __init__(
         self, hass: HomeAssistant, entry: EvaConfigEntry, client: EvaClient
@@ -43,6 +48,103 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
         self._task: asyncio.Task[None] | None = None
         self._ready: asyncio.Future[None] = hass.loop.create_future()
         self._last_event_id: str | None = None
+        self._command_listeners: set[Callable[[dict], None]] = set()
+        self.external_status: dict[str, dict | None] = {}
+        self._charger_task: asyncio.Task | None = None
+
+    async def _async_poll_chargers(self) -> None:
+        """Poll external chargers once per minute, isolated from Zigbee availability."""
+        try:
+            await asyncio.shield(self._ready)
+        except EvaError, ConfigEntryError:
+            return
+        while True:
+            delay = 60
+            for device_id, device in tuple(self.data.devices.items()):
+                if (
+                    device.get("external") is not True
+                    or device.get("type") != "evCharger"
+                ):
+                    continue
+                rate_limited = False
+                try:
+                    status = await self.client.async_get_charger_status(
+                        self.home_id, device_id
+                    )
+                except EvaAuthError:
+                    self.external_status[device_id] = None
+                    self.async_update_listeners()
+                    self.config_entry.async_start_reauth(self.hass)
+                    return
+                except EvaRateLimitError as err:
+                    status = None
+                    delay = max(delay, err.retry_after)
+                    rate_limited = True
+                except EvaError:
+                    status = None
+                if device_id in self.data.devices:
+                    self.external_status[device_id] = status
+                    self.async_update_listeners()
+                if rate_limited:
+                    break
+            await asyncio.sleep(delay)
+
+    async def async_command(
+        self, method: str, parts: tuple[str, ...], payload: dict | None = None
+    ) -> None:
+        """Wait for an action result, including results arriving before HTTP returns."""
+        if not self.last_update_success or (
+            not self.data.gateway_online and "external" not in parts
+        ):
+            raise HomeAssistantError("Eva home is unavailable")
+        action_id = None
+        early_results: dict[str, str] = {}
+        result = self.hass.loop.create_future()
+
+        def receive(event: dict) -> None:
+            event_type = event.get("eventType", "")
+            event_id = event.get("actionId")
+            if not isinstance(event_id, str) or not (
+                event_type
+                in {
+                    "deviceAttributeChanged",
+                    "groupAttributeChanged",
+                    "deviceUpdated",
+                    "deviceIdentified",
+                    "deviceSoftwareUpdateAssigned",
+                    "activeProfileUpdated",
+                    "moodActivated",
+                    "actionTimeout",
+                }
+                or "Failed" in event_type
+            ):
+                return
+            if action_id is None:
+                early_results[event_id] = event_type
+            elif event_id == action_id and not result.done():
+                result.set_result(event_type)
+
+        self._command_listeners.add(receive)
+        try:
+            action_id = await self.client.async_command(
+                self.home_id, method, parts, payload
+            )
+            if not action_id or "external" in parts:
+                return
+            if action_id in early_results:
+                result.set_result(early_results[action_id])
+            async with asyncio.timeout(30):
+                event_type = await result
+            if event_type == "actionTimeout" or "Failed" in event_type:
+                raise HomeAssistantError("Eva could not complete the command")
+        except EvaAuthError as err:
+            self.config_entry.async_start_reauth(self.hass)
+            raise HomeAssistantError("Eva authentication rejected") from err
+        except (EvaError, TimeoutError) as err:
+            raise HomeAssistantError("Eva did not confirm the command") from err
+        finally:
+            self._command_listeners.discard(receive)
+            result.cancel()
 
     async def _async_setup(self) -> None:
         """Start the stream; HA cancels background tasks on shutdown."""
@@ -50,6 +152,12 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             self.hass,
             self._async_listen(),
             "Eva SSE",
+            eager_start=False,
+        )
+        self._charger_task = self.config_entry.async_create_background_task(
+            self.hass,
+            self._async_poll_chargers(),
+            "Eva external chargers",
             eager_start=False,
         )
 
@@ -106,11 +214,14 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                             snapshot_timeout.reschedule(None)
                             if "home" in event or event_type in {
                                 "deviceDeleted",
+                                "groupDeleted",
                                 "homeDeleted",
                             }:
                                 self._async_remove_deleted_devices(state)
                             if state != self.data or not self.last_update_success:
                                 self.async_set_updated_data(state)
+                            for listener in tuple(self._command_listeners):
+                                listener(event)
                             backoff = 1.0
                             if not self._ready.done():
                                 self._ready.set_result(None)
@@ -140,6 +251,11 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
 
     def _async_remove_deleted_devices(self, state: HomeState) -> None:
         """Reconcile this entry's registry only after an authoritative update."""
+        self.external_status = {
+            key: value
+            for key, value in self.external_status.items()
+            if key in state.devices
+        }
         identifiers = {
             (DOMAIN, f"{self.config_entry.unique_id}:{device_id}")
             for device_id in state.devices
@@ -150,9 +266,25 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
         ):
             if not identifiers.intersection(device.identifiers):
                 registry.async_remove_device(device.id)
+        for device_id, device in state.devices.items():
+            registry.async_get_or_create(
+                config_entry_id=self.config_entry.entry_id,
+                identifiers={(DOMAIN, f"{self.config_entry.unique_id}:{device_id}")},
+                name=device.get("name"),
+                manufacturer=device.get("vendor"),
+                model=device.get("model"),
+                sw_version=device.get("softwareVersion"),
+                hw_version=device.get("hardwareVersion"),
+                suggested_area=device.get("room_name"),
+            )
 
     async def async_shutdown(self) -> None:
         """Cancel and await the stream, closing its HTTP response on every exit."""
+        if self._charger_task is not None:
+            self._charger_task.cancel()
+            with suppress(asyncio.CancelledError, EvaError, ConfigEntryError):
+                await self._charger_task
+            self._charger_task = None
         if self._task is not None:
             self._task.cancel()
             with suppress(asyncio.CancelledError):
