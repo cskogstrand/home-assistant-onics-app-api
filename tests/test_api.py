@@ -150,6 +150,7 @@ async def test_command_method_escaping_headers_and_success(status):
     )
     assert kwargs["headers"]["X-Partition-Key"] == "d"
     assert kwargs["headers"]["X-Schema-Version"] == "7"
+    assert kwargs["headers"]["Content-Type"] == "application/json"
     assert kwargs["allow_redirects"] is False
     assert kwargs["timeout"].total == 30
     session.request.return_value.__aexit__.assert_awaited_once()

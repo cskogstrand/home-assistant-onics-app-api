@@ -247,7 +247,14 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                 if isinstance(err, TimeoutError) and refresh_timeout.expired():
                     continue
                 self.async_set_update_error(
-                    UpdateFailed(str(err) or "Timed out waiting for a home snapshot")
+                    UpdateFailed(
+                        str(err)
+                        or (
+                            "Eva event stream went silent"
+                            if has_snapshot
+                            else "Timed out waiting for a home snapshot"
+                        )
+                    )
                 )
                 if isinstance(err, InvalidEvent):
                     self._last_event_id = None

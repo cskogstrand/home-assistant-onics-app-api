@@ -96,7 +96,11 @@ class EvaClient:
             async with self._session.request(
                 method,
                 f"{self._base_url}/{path}",
-                headers={**self._headers, "X-Partition-Key": home_id[-1]},
+                headers={
+                    **self._headers,
+                    "X-Partition-Key": home_id[-1],
+                    "Content-Type": "application/json",
+                },
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=30),
                 allow_redirects=False,

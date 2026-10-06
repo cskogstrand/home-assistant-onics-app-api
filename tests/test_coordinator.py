@@ -209,7 +209,7 @@ async def test_live_auth_failure_starts_reauth_once(hass, snapshot):
     await coordinator.async_shutdown()
 
 
-async def test_silent_connection_becomes_unavailable(hass, snapshot):
+async def test_silent_connection_becomes_unavailable(hass, snapshot, caplog):
     closed = asyncio.Event()
 
     async def stream(*args):
@@ -225,6 +225,8 @@ async def test_silent_connection_becomes_unavailable(hass, snapshot):
         await coordinator._async_update_data()
         await asyncio.wait_for(closed.wait(), 1)
     assert not coordinator.last_update_success
+    assert "Eva event stream went silent" in caplog.text
+    assert "Timed out waiting for a home snapshot" not in caplog.text
     await coordinator.async_shutdown()
 
 
