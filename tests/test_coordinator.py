@@ -8,22 +8,22 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.onics.api import OnicsAuthError, OnicsClient, OnicsError
-from custom_components.onics.coordinator import OnicsCoordinator
-from custom_components.onics.sensor import DESCRIPTIONS, OnicsTemperatureSensor
+from custom_components.eva.api import EvaAuthError, EvaClient, EvaError
+from custom_components.eva.coordinator import EvaCoordinator
+from custom_components.eva.sensor import DESCRIPTIONS, EvaTemperatureSensor
 
 
 def make_coordinator(hass, events):
     entry = MockConfigEntry(
-        domain="onics",
+        domain="eva",
         unique_id="test:test-home",
         data={"home_id": "test-home", "sse_client_id": "test-client"},
     )
     entry.add_to_hass(hass)
-    client = MagicMock(spec=OnicsClient)
+    client = MagicMock(spec=EvaClient)
     client.retry_seconds = 0
     client.async_events = MagicMock(side_effect=events)
-    coordinator = OnicsCoordinator(hass, entry, client)
+    coordinator = EvaCoordinator(hass, entry, client)
     entry.runtime_data = coordinator
     return coordinator
 
@@ -50,7 +50,7 @@ async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
     changed = asyncio.Event()
     unsub = coordinator.async_add_listener(changed.set)
     await coordinator._async_setup()
-    sensor = OnicsTemperatureSensor(coordinator, "test-device", DESCRIPTIONS[0])
+    sensor = EvaTemperatureSensor(coordinator, "test-device", DESCRIPTIONS[0])
     assert not sensor.available
     assert await connections.get() == ("test-home", "test-client", None)
     queue.put_nowait(snapshot)
@@ -71,7 +71,7 @@ async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
     await asyncio.wait_for(changed.wait(), 2)
     assert sensor.native_value == 0
     changed.clear()
-    queue.put_nowait(OnicsError("test disconnect"))
+    queue.put_nowait(EvaError("test disconnect"))
     await asyncio.wait_for(changed.wait(), 2)
     assert not sensor.available
     with pytest.raises(UpdateFailed):
@@ -94,7 +94,7 @@ async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
 
 async def test_initial_auth_failure_stops_stream(hass):
     async def stream(*args):
-        raise OnicsAuthError("rejected")
+        raise EvaAuthError("rejected")
         yield  # Make this an async generator, like the real transport.
 
     coordinator = make_coordinator(hass, stream)
@@ -112,7 +112,7 @@ async def test_live_auth_failure_starts_reauth_once(hass, snapshot):
     async def stream(*args):
         yield snapshot
         await queue.get()
-        raise OnicsAuthError("rejected")
+        raise EvaAuthError("rejected")
 
     coordinator = make_coordinator(hass, stream)
     with patch.object(MockConfigEntry, "async_start_reauth") as reauth:
@@ -136,7 +136,7 @@ async def test_silent_connection_becomes_unavailable(hass, snapshot):
             closed.set()
 
     coordinator = make_coordinator(hass, stream)
-    with patch("custom_components.onics.coordinator.STREAM_IDLE_TIMEOUT", 0.01):
+    with patch("custom_components.eva.coordinator.STREAM_IDLE_TIMEOUT", 0.01):
         await coordinator._async_setup()
         await coordinator._async_update_data()
         await asyncio.wait_for(closed.wait(), 1)
@@ -186,5 +186,5 @@ def test_invalid_temperature_is_unknown(hass, snapshot, value):
     coordinator.data.devices["test-device"]["attributes"]["temperature"]["value"] = (
         value
     )
-    sensor = OnicsTemperatureSensor(coordinator, "test-device", DESCRIPTIONS[0])
+    sensor = EvaTemperatureSensor(coordinator, "test-device", DESCRIPTIONS[0])
     assert sensor.native_value is None

@@ -1,4 +1,4 @@
-"""Sign in to an Onics environment, select a home, and renew credentials."""
+"""Sign in to an Eva environment, select a home, and renew credentials."""
 
 from typing import Any
 from uuid import uuid4
@@ -10,7 +10,7 @@ from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from .api import OnicsAuthError, OnicsClient, OnicsError, OnicsRateLimitError
+from .api import EvaAuthError, EvaClient, EvaError, EvaRateLimitError
 from .const import (
     CONF_ENVIRONMENT,
     CONF_HOME_ID,
@@ -25,7 +25,7 @@ PASSWORD_SELECTOR = selector.TextSelector(
 )
 
 
-class OnicsConfigFlow(ConfigFlow, domain=DOMAIN):
+class EvaConfigFlow(ConfigFlow, domain=DOMAIN):
     """Create one entry per environment and home, independent of account names."""
 
     VERSION = 1
@@ -39,7 +39,7 @@ class OnicsConfigFlow(ConfigFlow, domain=DOMAIN):
         """Validate credentials without retaining a session across UI steps."""
         session = async_create_clientsession(self.hass, auto_cleanup=False)
         try:
-            client = OnicsClient(
+            client = EvaClient(
                 session,
                 ENVIRONMENTS[data[CONF_ENVIRONMENT]],
                 data[CONF_USERNAME],
@@ -69,11 +69,11 @@ class OnicsConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
                 try:
                     homes = await self._async_get_homes(data)
-                except OnicsAuthError, ValueError:
+                except EvaAuthError, ValueError:
                     errors["base"] = "invalid_auth"
-                except OnicsRateLimitError:
+                except EvaRateLimitError:
                     errors["base"] = "rate_limited"
-                except OnicsError:
+                except EvaError:
                     errors["base"] = "cannot_connect"
                 else:
                     if not homes:
@@ -173,11 +173,11 @@ class OnicsConfigFlow(ConfigFlow, domain=DOMAIN):
                 homes = await self._async_get_homes(
                     {**entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]}
                 )
-            except OnicsAuthError, ValueError:
+            except EvaAuthError, ValueError:
                 errors["base"] = "invalid_auth"
-            except OnicsRateLimitError:
+            except EvaRateLimitError:
                 errors["base"] = "rate_limited"
-            except OnicsError:
+            except EvaError:
                 errors["base"] = "cannot_connect"
             else:
                 if entry.data[CONF_HOME_ID] not in homes:

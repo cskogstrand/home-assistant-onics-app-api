@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Sign in to Onics",
-        "description": "Enter your Onics account credentials.",
+        "title": "Sign in to Eva",
+        "description": "Enter your Eva account credentials.",
         "data": {
           "username": "Email",
           "password": "Password"
@@ -28,8 +28,8 @@
     },
     "error": {
       "invalid_auth": "Authentication failed. Check your email, password, environment, and account access.",
-      "cannot_connect": "Unable to connect to Onics. Try again later.",
-      "rate_limited": "Onics is limiting requests. Wait a while before trying again.",
+      "cannot_connect": "Unable to connect to Eva. Try again later.",
+      "rate_limited": "Eva is limiting requests. Wait a while before trying again.",
       "invalid_environment": "Select Test, QA, or Prod.",
       "invalid_home": "Select a home from the list.",
       "home_not_found": "This account no longer has access to the selected home. Restore access or remove this entry and add another home."

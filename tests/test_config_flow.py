@@ -7,10 +7,11 @@ import aiohttp
 import pytest
 from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_USER
 from homeassistant.data_entry_flow import FlowResultType, InvalidData
+from homeassistant.loader import async_get_integration
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.onics.api import OnicsAuthError, OnicsError, OnicsRateLimitError
-from custom_components.onics.const import DOMAIN
+from custom_components.eva.api import EvaAuthError, EvaError, EvaRateLimitError
+from custom_components.eva.const import DOMAIN
 
 CREDENTIALS = {
     "username": "test@example.invalid",
@@ -26,20 +27,21 @@ HOMES = [
 @pytest.fixture
 def mock_homes():
     with patch(
-        "custom_components.onics.api.OnicsClient.async_get_homes", return_value=HOMES
+        "custom_components.eva.api.EvaClient.async_get_homes", return_value=HOMES
     ) as mocked:
         yield mocked
 
 
 @pytest.fixture
 def mock_setup():
-    with patch(
-        "custom_components.onics.async_setup_entry", return_value=True
-    ) as mocked:
+    with patch("custom_components.eva.async_setup_entry", return_value=True) as mocked:
         yield mocked
 
 
 async def test_user_form(hass):
+    integration = await async_get_integration(hass, "eva")
+    assert integration.name == "Eva"
+    assert integration.has_branding
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -87,7 +89,7 @@ async def test_login_home_selection_and_private_session(
     if environment is not None:
         login["advanced"] = {"environment": environment}
     with patch(
-        "custom_components.onics.api.OnicsClient.async_get_homes",
+        "custom_components.eva.api.EvaClient.async_get_homes",
         autospec=True,
         side_effect=get_homes,
     ):
@@ -121,9 +123,9 @@ async def test_login_home_selection_and_private_session(
 @pytest.mark.parametrize(
     "error,reason",
     [
-        (OnicsAuthError("rejected"), "invalid_auth"),
-        (OnicsError("offline"), "cannot_connect"),
-        (OnicsRateLimitError(60), "rate_limited"),
+        (EvaAuthError("rejected"), "invalid_auth"),
+        (EvaError("offline"), "cannot_connect"),
+        (EvaRateLimitError(60), "rate_limited"),
     ],
 )
 async def test_login_failure_can_be_corrected(hass, mock_homes, error, reason, caplog):
@@ -212,9 +214,9 @@ async def test_duplicate_home_is_scoped_to_environment(
     [
         (HOMES, "reauth_successful"),
         ([], "home_not_found"),
-        (OnicsAuthError("rejected"), "invalid_auth"),
-        (OnicsError("offline"), "cannot_connect"),
-        (OnicsRateLimitError(60), "rate_limited"),
+        (EvaAuthError("rejected"), "invalid_auth"),
+        (EvaError("offline"), "cannot_connect"),
+        (EvaRateLimitError(60), "rate_limited"),
     ],
 )
 async def test_reauth_preserves_account_home_and_stream_id(

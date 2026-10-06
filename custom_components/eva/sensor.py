@@ -1,4 +1,4 @@
-"""Read-only temperature sensors backed exclusively by Onics state."""
+"""Read-only temperature sensors backed exclusively by Eva state."""
 
 import math
 
@@ -15,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import OnicsConfigEntry, OnicsCoordinator
+from .coordinator import EvaConfigEntry, EvaCoordinator
 
 DESCRIPTIONS = tuple(
     SensorEntityDescription(
@@ -36,7 +36,7 @@ PARALLEL_UPDATES = 0
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: OnicsConfigEntry,
+    entry: EvaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Add discovered attributes, including those introduced by later snapshots."""
@@ -52,7 +52,7 @@ async def async_setup_entry(
                 if description.key in device["attributes"] and key not in known:
                     known.add(key)
                     entities.append(
-                        OnicsTemperatureSensor(coordinator, device_id, description)
+                        EvaTemperatureSensor(coordinator, device_id, description)
                     )
         async_add_entities(entities)
 
@@ -60,14 +60,14 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(add_sensors))
 
 
-class OnicsTemperatureSensor(CoordinatorEntity[OnicsCoordinator], SensorEntity):
+class EvaTemperatureSensor(CoordinatorEntity[EvaCoordinator], SensorEntity):
     """A stable environment/home/device/attribute identity."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator: OnicsCoordinator,
+        coordinator: EvaCoordinator,
         device_id: str,
         description: SensorEntityDescription,
     ) -> None:

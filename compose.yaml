@@ -5,6 +5,6 @@ services:
       - "127.0.0.1:8124:8123"
     volumes:
       - ./config:/config
-      - ./custom_components/onics:/config/custom_components/onics:ro
+      - ./custom_components/eva:/config/custom_components/eva:ro
     environment:
       TZ: Europe/Oslo

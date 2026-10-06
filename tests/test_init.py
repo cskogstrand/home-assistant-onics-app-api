@@ -10,8 +10,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.onics.api import OnicsAuthError, OnicsError
-from custom_components.onics.const import DOMAIN
+from custom_components.eva.api import EvaAuthError, EvaError
+from custom_components.eva.const import DOMAIN
 
 
 def make_entry(hass, environment="test"):
@@ -52,9 +52,9 @@ async def test_real_setup_sensor_updates_environment_identity_and_unload(
 
     entry = make_entry(hass)
     with (
-        patch("custom_components.onics.api.OnicsClient.async_events", new=stream),
+        patch("custom_components.eva.api.EvaClient.async_events", new=stream),
         patch(
-            "custom_components.onics.async_create_clientsession",
+            "custom_components.eva.async_create_clientsession",
             wraps=async_create_clientsession,
         ) as sessions,
     ):
@@ -118,11 +118,11 @@ async def test_setup_auth_failure_prompts_reauthentication_and_cleans_up(hass):
 
     async def stream(client, *args):
         clients.append(client)
-        raise OnicsAuthError("rejected")
+        raise EvaAuthError("rejected")
         yield
 
     entry = make_entry(hass)
-    with patch("custom_components.onics.api.OnicsClient.async_events", new=stream):
+    with patch("custom_components.eva.api.EvaClient.async_events", new=stream):
         assert not await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     assert clients[0]._session.closed
@@ -137,13 +137,13 @@ async def test_setup_connection_failure_retries_and_cleans_up(hass):
 
     async def stream(client, *args):
         clients.append(client)
-        raise OnicsError("offline")
+        raise EvaError("offline")
         yield
 
     entry = make_entry(hass)
     with (
-        patch("custom_components.onics.api.OnicsClient.async_events", new=stream),
-        patch("custom_components.onics.coordinator.INITIAL_SNAPSHOT_TIMEOUT", 0.01),
+        patch("custom_components.eva.api.EvaClient.async_events", new=stream),
+        patch("custom_components.eva.coordinator.INITIAL_SNAPSHOT_TIMEOUT", 0.01),
     ):
         assert not await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()

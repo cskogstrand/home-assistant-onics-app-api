@@ -1,6 +1,6 @@
 {
-  "domain": "onics",
-  "name": "Onics",
+  "domain": "eva",
+  "name": "Eva",
   "codeowners": ["@cskogstrand"],
   "config_flow": true,
   "documentation": "https://github.com/cskogstrand/home-assistant-onics-app-api",

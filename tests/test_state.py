@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from custom_components.onics.state import HomeState, InvalidEvent
+from custom_components.eva.state import HomeState, InvalidEvent
 
 
 def test_partial_updates_preserve_absent_fields(snapshot):

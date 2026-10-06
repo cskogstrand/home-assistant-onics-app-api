@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 import pytest
 
-from custom_components.onics.api import (
-    OnicsAuthError,
-    OnicsClient,
-    OnicsError,
-    OnicsRateLimitError,
+from custom_components.eva.api import (
+    EvaAuthError,
+    EvaClient,
+    EvaError,
+    EvaRateLimitError,
     validate_base_url,
 )
 
@@ -28,7 +28,7 @@ def make_client(status=200, wire=b"", payload=None):
     session.get.return_value.__aenter__ = AsyncMock(return_value=response)
     session.get.return_value.__aexit__ = AsyncMock(return_value=False)
     return (
-        OnicsClient(
+        EvaClient(
             session,
             "https://api.example.invalid/prefix",
             "test@example.invalid",
@@ -73,10 +73,10 @@ async def test_sse_framing_headers_retry_and_replay():
 @pytest.mark.parametrize(
     "status,error",
     [
-        (401, OnicsAuthError),
-        (403, OnicsAuthError),
-        (429, OnicsRateLimitError),
-        (503, OnicsError),
+        (401, EvaAuthError),
+        (403, EvaAuthError),
+        (429, EvaRateLimitError),
+        (503, EvaError),
     ],
 )
 async def test_http_failures_release_response(status, error):
@@ -94,7 +94,7 @@ async def test_http_failures_release_response(status, error):
 )
 async def test_bad_sse_is_a_transport_error(wire):
     client, _, _ = make_client(wire=wire)
-    with pytest.raises(OnicsError):
+    with pytest.raises(EvaError):
         await anext(client.async_events("test-home", "test-client"))
 
 

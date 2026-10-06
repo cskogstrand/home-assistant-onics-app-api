@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import OnicsAuthError, OnicsClient, OnicsError, OnicsRateLimitError
+from .api import EvaAuthError, EvaClient, EvaError, EvaRateLimitError
 from .const import (
     CONF_HOME_ID,
     CONF_SSE_CLIENT_ID,
@@ -21,14 +21,14 @@ from .state import HomeState, InvalidEvent
 
 _LOGGER = logging.getLogger(__name__)
 
-type OnicsConfigEntry = ConfigEntry[OnicsCoordinator]
+type EvaConfigEntry = ConfigEntry[EvaCoordinator]
 
 
-class OnicsCoordinator(DataUpdateCoordinator[HomeState]):
+class EvaCoordinator(DataUpdateCoordinator[HomeState]):
     """Replace snapshots and publish partial updates without polling."""
 
     def __init__(
-        self, hass: HomeAssistant, entry: OnicsConfigEntry, client: OnicsClient
+        self, hass: HomeAssistant, entry: EvaConfigEntry, client: EvaClient
     ) -> None:
         """Keep one client ID and one stream per entry."""
         super().__init__(
@@ -48,7 +48,7 @@ class OnicsCoordinator(DataUpdateCoordinator[HomeState]):
         self._task = self.config_entry.async_create_background_task(
             self.hass,
             self._async_listen(),
-            "Onics SSE",
+            "Eva SSE",
             eager_start=False,
         )
 
@@ -57,12 +57,12 @@ class OnicsCoordinator(DataUpdateCoordinator[HomeState]):
         try:
             async with asyncio.timeout(INITIAL_SNAPSHOT_TIMEOUT):
                 await asyncio.shield(self._ready)
-        except OnicsAuthError as err:
-            raise ConfigEntryAuthFailed("Onics authentication rejected") from err
-        except OnicsError as err:
+        except EvaAuthError as err:
+            raise ConfigEntryAuthFailed("Eva authentication rejected") from err
+        except EvaError as err:
             raise UpdateFailed(str(err)) from err
         if not self.last_update_success:
-            raise UpdateFailed("Onics stream is unavailable")
+            raise UpdateFailed("Eva stream is unavailable")
         return self.data
 
     async def _async_listen(self) -> None:
@@ -90,14 +90,14 @@ class OnicsCoordinator(DataUpdateCoordinator[HomeState]):
                         event_type = event["eventType"]
                         if event_type == "killClient":
                             error = ConfigEntryError(
-                                "Onics closed this client; check access before reloading"
+                                "Eva closed this client; check access before reloading"
                             )
                             self.async_set_update_error(error)
                             if not self._ready.done():
                                 self._ready.set_exception(error)
                             return
                         if event_type == "resetClient":
-                            raise InvalidEvent("Onics requested a fresh snapshot")
+                            raise InvalidEvent("Eva requested a fresh snapshot")
                         if "home" in event:
                             has_snapshot = True
                         state = self.data.apply(event)
@@ -110,23 +110,23 @@ class OnicsCoordinator(DataUpdateCoordinator[HomeState]):
                                 self._ready.set_result(None)
                         if has_snapshot and isinstance(event.get("id"), str):
                             self._last_event_id = event["id"]
-                raise OnicsError("Onics stream closed")
-            except OnicsAuthError as err:
+                raise EvaError("Eva stream closed")
+            except EvaAuthError as err:
                 self.async_set_update_error(
-                    ConfigEntryAuthFailed("Onics authentication rejected")
+                    ConfigEntryAuthFailed("Eva authentication rejected")
                 )
                 if not self._ready.done():
                     self._ready.set_exception(err)
                 else:
                     self.config_entry.async_start_reauth(self.hass)
                 return
-            except (OnicsError, InvalidEvent, TimeoutError) as err:
+            except (EvaError, InvalidEvent, TimeoutError) as err:
                 self.async_set_update_error(
                     UpdateFailed(str(err) or "Timed out waiting for a home snapshot")
                 )
                 if isinstance(err, InvalidEvent):
                     self._last_event_id = None
-                if isinstance(err, OnicsRateLimitError):
+                if isinstance(err, EvaRateLimitError):
                     delay = max(delay, err.retry_after)
             delay = max(delay, self.client.retry_seconds)
             await asyncio.sleep(delay)

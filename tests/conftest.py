@@ -1,11 +1,11 @@
-"""Entirely invented local fixtures; never contact an Onics deployment."""
+"""Entirely invented local fixtures; never contact an Eva deployment."""
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
 def custom_integrations(enable_custom_integrations):
-    """Allow the real Home Assistant loader to discover Onics."""
+    """Allow the real Home Assistant loader to discover Eva."""
 
 
 @pytest.fixture

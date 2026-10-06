@@ -1,6 +1,6 @@
-"""Constants for the personal Onics test integration."""
+"""Constants for the personal Eva test integration."""
 
-DOMAIN = "onics"
+DOMAIN = "eva"
 CLIENT_ID = "HomeAssistant-0.1.1-personal-test"
 CLIENT_BRAND = "eva"
 SCHEMA_VERSION = 7

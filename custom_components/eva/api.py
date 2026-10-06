@@ -1,4 +1,4 @@
-"""Asynchronous, read-only transport for the documented Onics App API."""
+"""Asynchronous, read-only transport for the documented Eva App API."""
 
 import json
 from collections.abc import AsyncIterator
@@ -11,20 +11,20 @@ from yarl import URL
 from .const import CLIENT_BRAND, CLIENT_ID, SCHEMA_VERSION, STREAM_IDLE_TIMEOUT
 
 
-class OnicsError(Exception):
+class EvaError(Exception):
     """An API request or event stream failed."""
 
 
-class OnicsAuthError(OnicsError):
+class EvaAuthError(EvaError):
     """The server rejected authentication or home access."""
 
 
-class OnicsRateLimitError(OnicsError):
+class EvaRateLimitError(EvaError):
     """The server requires a delay before retrying."""
 
     def __init__(self, retry_after: float) -> None:
         """Keep the server's retry delay without response bodies or credentials."""
-        super().__init__("Onics request rate limited")
+        super().__init__("Eva request rate limited")
         self.retry_after = retry_after
 
 
@@ -44,7 +44,7 @@ def validate_base_url(value: str) -> str:
     return str(url).rstrip("/")
 
 
-class OnicsClient:
+class EvaClient:
     """One client's HTTP and SSE transport using documented Basic authentication."""
 
     def __init__(
@@ -71,12 +71,12 @@ class OnicsClient:
     @staticmethod
     def _check_response(response: aiohttp.ClientResponse) -> None:
         if response.status in {401, 403}:
-            raise OnicsAuthError("Authentication or home access rejected")
+            raise EvaAuthError("Authentication or home access rejected")
         if response.status == 429:
             delay = response.headers.get("Retry-After", "60")
-            raise OnicsRateLimitError(float(delay) if delay.isdecimal() else 60)
+            raise EvaRateLimitError(float(delay) if delay.isdecimal() else 60)
         if response.status != 200:
-            raise OnicsError(f"Onics returned HTTP {response.status}")
+            raise EvaError(f"Eva returned HTTP {response.status}")
 
     async def async_get_homes(self) -> list[dict[str, str]]:
         """List only home IDs and names, for either documented response shape."""
@@ -97,10 +97,10 @@ class OnicsClient:
                 or not isinstance(home.get("name"), str)
                 for home in homes
             ):
-                raise OnicsError("Invalid home list")
+                raise EvaError("Invalid home list")
             return [{"id": home["id"], "name": home["name"]} for home in homes]
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-            raise OnicsError("Unable to read the home list") from err
+            raise EvaError("Unable to read the home list") from err
 
     async def async_events(
         self,
@@ -131,7 +131,7 @@ class OnicsClient:
             ) as response:
                 self._check_response(response)
                 if response.content_type != "text/event-stream":
-                    raise OnicsError("Expected an SSE response")
+                    raise EvaError("Expected an SSE response")
                 data: list[str] = []
                 size = 0
                 async for raw in response.content:
@@ -142,7 +142,7 @@ class OnicsClient:
                             if not isinstance(event, dict) or not isinstance(
                                 event.get("eventType"), str
                             ):
-                                raise OnicsError("Invalid SSE event")
+                                raise EvaError("Invalid SSE event")
                             yield event
                         data = []
                         size = 0
@@ -154,7 +154,7 @@ class OnicsClient:
                         elif field == "data":
                             size += len(raw)
                             if size > 8 * 1024 * 1024:
-                                raise OnicsError("SSE event exceeds size limit")
+                                raise EvaError("SSE event exceeds size limit")
                             data.append(value)
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-            raise OnicsError("Event stream interrupted or invalid") from err
+            raise EvaError("Event stream interrupted or invalid") from err

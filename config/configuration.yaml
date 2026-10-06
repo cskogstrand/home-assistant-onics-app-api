@@ -1,6 +1,6 @@
 # Isolated development instance. Never point this at your normal HA configuration.
 homeassistant:
-  name: Onics test
+  name: Eva test
   latitude: 0
   longitude: 0
   elevation: 0
