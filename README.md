@@ -9,12 +9,6 @@ Personal test integration for [Eva Smarthus](https://evasmart.no/).
 Based on the integration blueprint; its MIT license is preserved unchanged.
 The display name is **Eva** and the integration domain is `eva`.
 
-Upgrading from Onics: remove the old integration entry and
-`custom_components/onics` directory, install `custom_components/eva`, restart Home
-Assistant, and add **Eva** again. The domain has changed; existing entries are not
-migrated automatically. Check dashboards and automations after adding your devices
-again, as entity IDs may change.
-
 ## Setup
 
 1. Install `custom_components/eva` in your Home Assistant configuration's
