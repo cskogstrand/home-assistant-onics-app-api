@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
@@ -220,6 +221,9 @@ async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
     queue.put_nowait(EvaError("test disconnect"))
     await asyncio.wait_for(changed.wait(), 2)
     assert not sensor.available
+    assert (
+        str(coordinator.last_exception) == "test disconnect; reconnecting automatically"
+    )
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
     assert await asyncio.wait_for(connections.get(), 3) == (
@@ -241,6 +245,7 @@ async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
 async def test_server_closure_reconnects_with_cursor_retry_and_availability(
     hass, snapshot, caplog
 ):
+    caplog.set_level("DEBUG", logger="custom_components.eva.coordinator")
     connections = asyncio.Queue()
     close_stream = asyncio.Queue()
     closed = []
@@ -285,6 +290,10 @@ async def test_server_closure_reconnects_with_cursor_retry_and_availability(
                     close_stream.put_nowait(None)
             update_error.assert_not_called()
             assert "Error requesting eva data" not in caplog.text
+            assert "Eva SSE stream closed; reconnecting automatically" in caplog.text
+            assert "API streams normally close after 10 minutes" in caplog.text
+            assert "Reconnecting Eva SSE stream in 1.1 seconds" in caplog.text
+            assert "Eva SSE home snapshot received; stream active" in caplog.text
         finally:
             await coordinator.async_shutdown()
     assert closed == [1, 2, 3]
@@ -307,7 +316,7 @@ async def test_stream_closed_without_snapshot_is_an_error(hass):
         assert isinstance(coordinator.last_exception, UpdateFailed)
         assert (
             str(coordinator.last_exception)
-            == "Eva stream closed before a home snapshot"
+            == "Eva SSE stream closed before a home snapshot; reconnecting automatically"
         )
     finally:
         await coordinator.async_shutdown()
@@ -320,9 +329,12 @@ async def test_initial_auth_failure_stops_stream(hass):
 
     coordinator = make_coordinator(hass, stream)
     await coordinator._async_setup()
-    with pytest.raises(ConfigEntryAuthFailed):
+    with pytest.raises(ConfigEntryAuthFailed, match="rejected"):
         await coordinator._async_update_data()
     assert not coordinator.last_update_success
+    assert str(coordinator.last_exception) == (
+        "rejected; automatic reconnect stopped; reauthentication required"
+    )
     assert coordinator._task.done()
     await coordinator.async_shutdown()
 
@@ -346,24 +358,82 @@ async def test_live_auth_failure_starts_reauth_once(hass, snapshot):
     await coordinator.async_shutdown()
 
 
-async def test_silent_connection_becomes_unavailable(hass, snapshot, caplog):
+@pytest.mark.parametrize("socket_timeout", [False, True])
+@pytest.mark.parametrize("offline", [None, "gateway", "device"])
+async def test_silent_connection_reconnects_without_changing_availability(
+    hass, snapshot, caplog, socket_timeout, offline
+):
+    caplog.set_level("DEBUG", logger="custom_components.eva.coordinator")
+    if offline == "gateway":
+        snapshot["home"]["gateway"]["online"] = False
+    elif offline == "device":
+        snapshot["home"]["rooms"][0]["devices"][0]["online"] = False
+    closed = asyncio.Event()
+    connections = asyncio.Queue()
+
+    async def stream(home_id, client_id, last_seen_event_id):
+        connections.put_nowait((home_id, client_id, last_seen_event_id))
+        try:
+            yield snapshot
+            if socket_timeout:
+                raise aiohttp.SocketTimeoutError("Read timed out")
+            await asyncio.Event().wait()
+        finally:
+            closed.set()
+
+    coordinator = make_coordinator(hass, stream)
+    sensor = EvaSensor(coordinator, "test-device", DESCRIPTIONS[0])
+    with (
+        patch("custom_components.eva.coordinator.STREAM_IDLE_TIMEOUT", 0.01),
+        patch.object(
+            coordinator,
+            "async_set_update_error",
+            wraps=coordinator.async_set_update_error,
+        ) as update_error,
+    ):
+        await coordinator._async_setup()
+        try:
+            await coordinator._async_update_data()
+            assert await connections.get() == ("test-home", "test-client", None)
+            await asyncio.wait_for(closed.wait(), 1)
+            assert coordinator.last_update_success
+            assert sensor.available is (offline is None)
+            assert sensor.native_value == 21.5
+            assert await coordinator._async_update_data() is coordinator.data
+            assert await asyncio.wait_for(connections.get(), 3) == (
+                "test-home",
+                "test-client",
+                "test-event-1",
+            )
+            assert sensor.available is (offline is None)
+            update_error.assert_not_called()
+            assert "Error requesting eva data" not in caplog.text
+            assert "Eva SSE received no events for 0.01 seconds" in caplog.text
+            assert "keepAlive is normally sent every 5 seconds" in caplog.text
+        finally:
+            await coordinator.async_shutdown()
+    assert coordinator._task is None
+
+
+async def test_timeout_before_home_snapshot_stays_unavailable(hass):
     closed = asyncio.Event()
 
     async def stream(*args):
         try:
-            yield snapshot
             await asyncio.Event().wait()
+            yield  # Make this an async generator, like the real transport.
         finally:
             closed.set()
 
     coordinator = make_coordinator(hass, stream)
     with patch("custom_components.eva.coordinator.STREAM_IDLE_TIMEOUT", 0.01):
         await coordinator._async_setup()
-        await coordinator._async_update_data()
         await asyncio.wait_for(closed.wait(), 1)
     assert not coordinator.last_update_success
-    assert "Eva event stream went silent" in caplog.text
-    assert "Timed out waiting for a home snapshot" not in caplog.text
+    assert isinstance(coordinator.last_exception, UpdateFailed)
+    assert str(coordinator.last_exception) == (
+        "Eva SSE timed out before receiving a home snapshot; reconnecting automatically"
+    )
     await coordinator.async_shutdown()
 
 
@@ -373,7 +443,9 @@ async def test_kill_client_stops_without_retrying_setup(hass):
 
     coordinator = make_coordinator(hass, stream)
     await coordinator._async_setup()
-    with pytest.raises(ConfigEntryError):
+    with pytest.raises(
+        ConfigEntryError, match=r"killClient.*Automatic reconnect stopped"
+    ):
         await coordinator._async_update_data()
     assert coordinator._task.done()
     coordinator.client.async_events.assert_called_once()
@@ -399,6 +471,10 @@ async def test_reset_client_discards_replay_cursor(hass, snapshot):
     assert coordinator._last_event_id == "test-event-1"
     reset.set()
     assert await asyncio.wait_for(connections.get(), 3) is None
+    assert "resetClient; discarding the replay cursor" in str(
+        coordinator.last_exception
+    )
+    assert "reconnecting automatically" in str(coordinator.last_exception)
     await coordinator.async_shutdown()
 
 

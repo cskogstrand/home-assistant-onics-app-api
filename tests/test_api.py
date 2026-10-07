@@ -71,18 +71,18 @@ async def test_sse_framing_headers_retry_and_replay():
 
 
 @pytest.mark.parametrize(
-    "status,error",
+    "status,error,message",
     [
-        (401, EvaAuthError),
-        (403, EvaAuthError),
-        (429, EvaRateLimitError),
-        (503, EvaError),
+        (401, EvaAuthError, "HTTP 401: credentials are missing or invalid"),
+        (403, EvaAuthError, "HTTP 403: account lacks access or permission"),
+        (429, EvaRateLimitError, "Eva request rate limited"),
+        (503, EvaError, "Eva returned HTTP 503"),
     ],
 )
-async def test_http_failures_release_response(status, error):
+async def test_http_failures_release_response(status, error, message):
     client, session, response = make_client(status=status)
     response.headers = {"Retry-After": "42"}
-    with pytest.raises(error) as exc:
+    with pytest.raises(error, match=message) as exc:
         await anext(client.async_events("test-home", "test-client"))
     if status == 429:
         assert exc.value.retry_after == 42
@@ -90,12 +90,54 @@ async def test_http_failures_release_response(status, error):
 
 
 @pytest.mark.parametrize(
-    "wire", [b"data: []\n\n", b"data: not-json\n\n", b'data: {"eventType": []}\n\n']
+    "wire,message",
+    [
+        (b"data: []\n\n", "must be a JSON object with a string eventType"),
+        (b"data: private-invalid-json\n\n", "contains invalid JSON"),
+        (
+            b'data: {"eventType": []}\n\n',
+            "must be a JSON object with a string eventType",
+        ),
+        (b"data: \xffprivate-invalid-utf8\n\n", "contains invalid UTF-8"),
+        (b"retry: " + b"9" * 5000 + b"\n\n", "contains an invalid field"),
+    ],
 )
-async def test_bad_sse_is_a_transport_error(wire):
-    client, _, _ = make_client(wire=wire)
-    with pytest.raises(EvaError):
+async def test_bad_sse_reports_format_failure_without_payload(wire, message):
+    client, session, _ = make_client(wire=wire)
+    with pytest.raises(EvaError, match=message) as exc:
         await anext(client.async_events("test-home", "test-client"))
+    assert "private" not in str(exc.value)
+    session.get.return_value.__aexit__.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "error,message",
+    [
+        (
+            aiohttp.ClientConnectionError,
+            "Eva SSE transport failed (ClientConnectionError)",
+        ),
+        (aiohttp.ClientError, "Eva SSE transport failed (ClientError)"),
+        (aiohttp.ClientPayloadError, "Eva SSE response body is incomplete or corrupt"),
+    ],
+)
+async def test_sse_transport_failure_reports_cause_without_private_details(
+    error, message
+):
+    client, session, response = make_client()
+    response.content.set_exception(error("private request URL or response data"))
+    with pytest.raises(EvaError) as exc:
+        await anext(client.async_events("test-home", "test-client"))
+    assert str(exc.value) == message
+    session.get.return_value.__aexit__.assert_awaited_once()
+
+
+async def test_sse_socket_timeout_reaches_coordinator_and_releases_response():
+    client, session, response = make_client()
+    response.content.set_exception(aiohttp.SocketTimeoutError("Read timed out"))
+    with pytest.raises(TimeoutError):
+        await anext(client.async_events("test-home", "test-client"))
+    session.get.return_value.__aexit__.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

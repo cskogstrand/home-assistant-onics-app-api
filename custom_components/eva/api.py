@@ -73,8 +73,16 @@ class EvaClient:
     def _check_response(
         response: aiohttp.ClientResponse, statuses: tuple[int, ...] = (200,)
     ) -> None:
-        if response.status in {401, 403}:
-            raise EvaAuthError("Authentication or home access rejected")
+        if response.status == 401:
+            raise EvaAuthError(
+                "Eva returned HTTP 401: credentials are missing or invalid, "
+                "or the account email is not verified"
+            )
+        if response.status == 403:
+            raise EvaAuthError(
+                "Eva returned HTTP 403: account lacks access or permission "
+                "for the requested resource"
+            )
         if response.status == 429:
             delay = response.headers.get("Retry-After", "60")
             raise EvaRateLimitError(float(delay) if delay.isdecimal() else 60)
@@ -214,7 +222,7 @@ class EvaClient:
             ) as response:
                 self._check_response(response)
                 if response.content_type != "text/event-stream":
-                    raise EvaError("Expected an SSE response")
+                    raise EvaError("Eva SSE response is not text/event-stream")
                 data: list[str] = []
                 size = 0
                 async for raw in response.content:
@@ -225,7 +233,10 @@ class EvaClient:
                             if not isinstance(event, dict) or not isinstance(
                                 event.get("eventType"), str
                             ):
-                                raise EvaError("Invalid SSE event")
+                                raise EvaError(
+                                    "Eva SSE event must be a JSON object "
+                                    "with a string eventType"
+                                )
                             yield event
                         data = []
                         size = 0
@@ -237,7 +248,18 @@ class EvaClient:
                         elif field == "data":
                             size += len(raw)
                             if size > 8 * 1024 * 1024:
-                                raise EvaError("SSE event exceeds size limit")
+                                raise EvaError("Eva SSE event exceeds the 8 MiB limit")
                             data.append(value)
-        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-            raise EvaError("Event stream interrupted or invalid") from err
+        except TimeoutError:
+            # Let the coordinator distinguish idle streams from failed snapshots.
+            raise
+        except aiohttp.ClientPayloadError as err:
+            raise EvaError("Eva SSE response body is incomplete or corrupt") from err
+        except aiohttp.ClientError as err:
+            raise EvaError(f"Eva SSE transport failed ({type(err).__name__})") from err
+        except UnicodeDecodeError as err:
+            raise EvaError("Eva SSE event contains invalid UTF-8") from err
+        except json.JSONDecodeError as err:
+            raise EvaError("Eva SSE event contains invalid JSON") from err
+        except ValueError as err:
+            raise EvaError("Eva SSE stream contains an invalid field") from err

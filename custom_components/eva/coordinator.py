@@ -148,7 +148,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             return True
         except EvaAuthError as err:
             self.config_entry.async_start_reauth(self.hass)
-            raise HomeAssistantError("Eva authentication rejected") from err
+            raise HomeAssistantError(str(err)) from err
         except EvaError as err:
             raise HomeAssistantError(str(err)) from err
         except TimeoutError as err:
@@ -182,7 +182,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             async with asyncio.timeout(INITIAL_SNAPSHOT_TIMEOUT):
                 await asyncio.shield(self._ready)
         except EvaAuthError as err:
-            raise ConfigEntryAuthFailed("Eva authentication rejected") from err
+            raise ConfigEntryAuthFailed(str(err)) from err
         except EvaError as err:
             raise UpdateFailed(str(err)) from err
         if not self.last_update_success:
@@ -214,18 +214,27 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                         event_type = event["eventType"]
                         if event_type == "killClient":
                             error = ConfigEntryError(
-                                "Eva closed this client; check access before reloading"
+                                "Eva SSE received killClient; the server requested "
+                                "this client to stop. Automatic reconnect stopped; "
+                                "reload the integration to retry"
                             )
                             self.async_set_update_error(error)
                             if not self._ready.done():
                                 self._ready.set_exception(error)
                             return
                         if event_type == "resetClient":
-                            raise InvalidEvent("Eva requested a fresh snapshot")
+                            raise InvalidEvent(
+                                "Eva SSE received resetClient; discarding the replay "
+                                "cursor and requesting a fresh home snapshot"
+                            )
                         if "home" in event:
                             has_snapshot = True
                         state = self.data.apply(event)
                         if has_snapshot:
+                            if "home" in event:
+                                _LOGGER.debug(
+                                    "Eva SSE home snapshot received; stream active"
+                                )
                             snapshot_timeout.reschedule(None)
                             if "home" in event or event_type in {
                                 "deviceDeleted",
@@ -254,32 +263,46 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                             self._last_event_id = event["id"]
                 # The server normally closes the stream after ten minutes.
                 if not has_snapshot:
-                    raise EvaError("Eva stream closed before a home snapshot")
+                    raise EvaError("Eva SSE stream closed before a home snapshot")
+                _LOGGER.debug(
+                    "Eva SSE stream closed; reconnecting automatically "
+                    "(API streams normally close after 10 minutes)"
+                )
             except EvaAuthError as err:
                 self.async_set_update_error(
-                    ConfigEntryAuthFailed("Eva authentication rejected")
+                    ConfigEntryAuthFailed(
+                        f"{err}; automatic reconnect stopped; reauthentication required"
+                    )
                 )
                 if not self._ready.done():
                     self._ready.set_exception(err)
                 else:
                     self.config_entry.async_start_reauth(self.hass)
                 return
-            except (EvaError, InvalidEvent, TimeoutError) as err:
-                self.async_set_update_error(
-                    UpdateFailed(
-                        str(err)
-                        or (
-                            "Eva event stream went silent"
-                            if has_snapshot
-                            else "Timed out waiting for a home snapshot"
+            except TimeoutError:
+                if has_snapshot:
+                    _LOGGER.debug(
+                        "Eva SSE received no events for %s seconds; reconnecting "
+                        "automatically (keepAlive is normally sent every 5 seconds)",
+                        STREAM_IDLE_TIMEOUT,
+                    )
+                else:
+                    self.async_set_update_error(
+                        UpdateFailed(
+                            "Eva SSE timed out before receiving a home snapshot; "
+                            "reconnecting automatically"
                         )
                     )
+            except (EvaError, InvalidEvent) as err:
+                self.async_set_update_error(
+                    UpdateFailed(f"{err}; reconnecting automatically")
                 )
                 if isinstance(err, InvalidEvent):
                     self._last_event_id = None
                 if isinstance(err, EvaRateLimitError):
                     delay = max(delay, err.retry_after)
             delay = max(delay, self.client.retry_seconds)
+            _LOGGER.debug("Reconnecting Eva SSE stream in %s seconds", delay)
             await asyncio.sleep(delay)
             backoff = min(max(backoff * 2, delay), 60.0)
 

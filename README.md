@@ -86,8 +86,15 @@ Do not use a production configuration directory here.
   fields. Reconnects use the documented replay cursor.
 - Streams reconnect after the server's normal 10-minute close, using the same
   client ID, replay cursor and server retry delay without marking entities
-  unavailable. A silent connection becomes unavailable after 15 seconds;
-  failed connections reconnect with backoff and the server retry delay.
+  unavailable. After a home snapshot arrives, a silent connection reconnects
+  after 15 seconds without changing availability. Failed connections or home
+  snapshots still mark entities unavailable and retry with backoff; gateway and
+  device online flags continue to determine availability.
+- SSE debug logs distinguish stream closure, missing events, reconnect delays and
+  receipt of a fresh snapshot. Errors distinguish transport failures, incomplete
+  response bodies and malformed events, and state whether reconnection continues.
+  HTTP 401 and 403 explain authentication and access failures separately, following
+  the [API documentation](https://onicsas.github.io/home-hla-docs/#sse-stream).
 - Authentication failures request reauthentication; unloading cancels the stream.
 - Device capabilities determine entity types, regardless of vendor or model.
   Entities and device IDs include environment, home and stable API IDs. Devices
