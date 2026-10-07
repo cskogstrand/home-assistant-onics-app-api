@@ -2,6 +2,8 @@
 
 import pytest
 
+from custom_components.eva.credentials import async_get_credentials
+
 
 @pytest.fixture(autouse=True)
 def custom_integrations(enable_custom_integrations):
@@ -46,3 +48,13 @@ def snapshot():
             ],
         },
     }
+
+
+@pytest.fixture
+async def saved_credentials(hass):
+    credentials = await async_get_credentials(hass)
+    for environment in ("test", "prod"):
+        await credentials.async_save(
+            environment, "test@example.invalid", "test-password"
+        )
+    return credentials

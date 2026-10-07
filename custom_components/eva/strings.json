@@ -2,19 +2,33 @@
   "config": {
     "step": {
       "user": {
-        "title": "Sign in to Eva",
-        "description": "Enter your Eva account credentials.",
+        "title": "Connect Eva",
+        "description": "Choose the environment for your home.",
+        "data": {
+          "environment": "Environment"
+        }
+      },
+      "login_method": {
+        "title": "Log in to Eva in {environment}",
+        "description": "Reuse a saved login or enter another account.",
+        "menu_options": {
+          "account": "Use a saved login",
+          "login": "Log in with another user"
+        }
+      },
+      "account": {
+        "title": "Choose a saved login",
+        "description": "Select an account saved for {environment}. Its password will be reused.",
+        "data": {
+          "username": "Account"
+        }
+      },
+      "login": {
+        "title": "Log in to Eva in {environment}",
+        "description": "Enter your Eva email and password. This login will be saved for other homes in the same environment after you select a home.",
         "data": {
           "username": "Email",
           "password": "Password"
-        },
-        "sections": {
-          "advanced": {
-            "name": "Advanced",
-            "data": {
-              "environment": "Environment"
-            }
-          }
         }
       },
       "home": {
@@ -25,25 +39,28 @@
         }
       },
       "reauth_confirm": {
-        "title": "Sign in again",
-        "description": "Enter the current password for {username} in {environment}. Your selected home will stay the same.",
+        "title": "Update your Eva login",
+        "description": "Enter the current password for {username} in {environment}. Homes using this saved login will be updated together.",
         "data": {
+          "username": "Email",
           "password": "Password"
         }
       }
     },
     "error": {
-      "invalid_auth": "Authentication failed. Check your email, password, environment, and account access.",
-      "cannot_connect": "Unable to connect to Eva. Try again later.",
-      "rate_limited": "Eva is limiting requests. Wait a while before trying again.",
       "invalid_environment": "Select Test, QA, or Prod.",
+      "invalid_account": "Select a saved login for this environment.",
+      "invalid_auth": "Eva rejected the login. Enter your email and current password.",
       "invalid_home": "Select a home from the list.",
-      "home_not_found": "This account no longer has access to the selected home. Restore access or remove this entry and add another home."
+      "home_not_found": "This account no longer has access to the selected home.",
+      "cannot_save": "Unable to save your login. Check Home Assistant’s storage and try again.",
+      "cannot_connect": "Unable to connect to Eva. Try again later.",
+      "rate_limited": "Eva is limiting requests. Wait a while before trying again."
     },
     "abort": {
       "already_configured": "This home is already configured in this environment.",
       "no_homes": "Your account has no accessible homes in this environment.",
-      "reauth_successful": "Authentication was updated successfully."
+      "reauth_successful": "The saved login and its homes have been updated."
     }
   },
   "entity": {

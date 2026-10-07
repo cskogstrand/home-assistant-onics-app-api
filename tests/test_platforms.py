@@ -46,7 +46,9 @@ def entity_id(hass, domain, key):
     )
 
 
-async def test_native_platforms_commands_updates_and_cleanup(hass, snapshot):
+async def test_native_platforms_commands_updates_and_cleanup(
+    hass, snapshot, saved_credentials
+):
     snapshot["home"]["rooms"][0]["devices"] = [
         device(
             "lamp",
@@ -586,7 +588,9 @@ async def test_command_handles_early_confirmation_and_failure(hass, snapshot, ou
     assert not coordinator._command_listeners
 
 
-async def test_external_charger_polling_controls_and_unload(hass, snapshot):
+async def test_external_charger_polling_controls_and_unload(
+    hass, snapshot, saved_credentials
+):
     from unittest.mock import AsyncMock
 
     from custom_components.eva.api import EvaError

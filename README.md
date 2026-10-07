@@ -14,10 +14,12 @@ The display name is **Eva** and the integration domain is `eva`.
 1. Install `custom_components/eva` in your Home Assistant configuration's
    `custom_components` directory and restart Home Assistant.
 2. Open **Settings → Devices & services → Add integration → Eva**.
-3. Enter your Eva email and password. **Prod** is the default environment;
-   expand **Advanced** to select **Test** or **QA** before signing in.
-4. Select one of the homes returned for your account.
-5. After the initial SSE snapshot arrives, device capabilities appear as native
+3. Select **Prod**, **Test**, or **QA**.
+4. If this environment has saved logins, choose **Use a saved login** and select
+   an account from the list, or choose **Log in with another user**.
+5. For a new login, enter your Eva email and password, then select a home.
+   The login is saved only after you select an unconfigured home.
+6. After the initial SSE snapshot arrives, device capabilities appear as native
    Home Assistant entities. Existing temperature entity IDs are preserved.
 
 | Environment | API base URL |
@@ -26,21 +28,33 @@ The display name is **Eva** and the integration domain is `eva`.
 | QA | `https://home-hla.smarthome-qa.datek.io` |
 | Prod | `https://home.api.evasmart.no` |
 
-All environments use client brand `eva` and schema version **7**, confirmed for
-this integration. Login uses the API's documented HTTP Basic authentication over
-HTTPS. Credentials are sent only to the selected API; redirects are disabled.
-There is no access-token entry field or assumption that tokens are permanent.
-Each entry uses its own session cookies and a persistent random SSE client ID.
+All environments use client brand `eva` and schema version **7**. Login uses the
+API’s documented HTTP Basic authentication over HTTPS. No Keycloak client or
+access to the Keycloak administration console is required. Credentials are sent
+only to the selected API; redirects are disabled. Each home keeps its own private
+cookie session and persistent random SSE client ID.
 
-A rejected login leaves you on the sign-in form. Accounts without accessible
-homes cannot create an entry. The same home can be added once per environment.
-To connect another home, add another Eva entry. If authentication later fails,
-Home Assistant asks for the account's current password and checks that it still
-has access to the selected home before reloading the entry.
+Logins are saved once per email and environment using Home Assistant’s private
+integration storage. Home entries reference the saved login instead of keeping
+separate password copies. Home Assistant’s **Application Credentials** feature is
+for OAuth client IDs and secrets, so it is not used for these account passwords.
 
-Home Assistant stores credentials in its local configuration storage. Keep that
-storage and its backups private. Do not put credentials or private home/device
-data in Git, logs, issues, or test fixtures.
+To connect another home, add another Eva entry, select the same environment,
+and choose a saved login. The picker is shown even when only one login is saved.
+Accounts with no accessible homes cannot create an entry. A home can be added
+once per environment. A rejected saved login opens the email/password form so
+its password can be corrected. Updating a password reloads the homes using that
+email in that environment; other accounts and environments are unaffected.
+
+Existing password-based entries migrate their credentials to shared storage
+without changing home, entity or SSE client IDs. Entries created with the
+experimental OAuth flow require an email/password login. Reauthentication checks
+access to the existing home before saving the new password.
+
+Saved logins remain available after a home is removed. Passwords are stored
+locally, not encrypted by the integration; keep Home Assistant’s storage and
+backups private. Do not put credentials or private home/device data in Git,
+logs, issues, or test fixtures.
 
 ## Separate development instance
 
@@ -170,7 +184,7 @@ voltage/current and min/max readings only update when Eva receives a report;
 the integration does not repeatedly wake battery devices to force measurements.
 
 The [App API documentation](https://onicsas.github.io/home-hla-docs/#authentication)
-permits Basic authentication. Its [introduction](https://onicsas.github.io/home-hla-docs/#introduction)
+supports HTTP Basic authentication. Its [introduction](https://onicsas.github.io/home-hla-docs/#introduction)
 describes foreground app sessions and says continuous backend connections are
 outside the API's intended use. This remains a personal test integration.
 
@@ -186,7 +200,8 @@ docker compose config --quiet
 ```
 
 Tests disable network access and use invented identifiers and credentials. They
-cover sign-in, environment routing, home selection, duplicate prevention,
+cover saved-login selection and reuse, environment isolation, credential migration,
+home selection, duplicate prevention,
 reauthentication, all supported native platforms, validated and confirmed
 commands, external charger polling, group/mood discovery, deletion, unload, state
 merging and SSE recovery. Live authentication and real-device updates still

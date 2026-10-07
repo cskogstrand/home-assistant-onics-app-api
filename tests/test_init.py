@@ -7,13 +7,19 @@ from unittest.mock import patch
 import aiohttp
 import pytest
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.util.file import WriteError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.eva import async_migrate_entry
 from custom_components.eva.api import EvaAuthError, EvaError
 from custom_components.eva.const import DOMAIN
+from custom_components.eva.credentials import async_get_credentials
+
+pytestmark = pytest.mark.usefixtures("saved_credentials")
 
 
 def make_entry(hass, environment="test"):
@@ -21,10 +27,10 @@ def make_entry(hass, environment="test"):
         domain=DOMAIN,
         unique_id=f"{environment}:test-home",
         title="Test home",
+        version=4,
         data={
             "environment": environment,
             "username": "test@example.invalid",
-            "password": "test-password",
             "home_id": "test-home",
             "sse_client_id": "test-client",
         },
@@ -34,7 +40,7 @@ def make_entry(hass, environment="test"):
 
 
 async def test_real_setup_sensor_updates_environment_identity_and_unload(
-    hass, snapshot
+    hass, hass_storage, snapshot
 ):
     queue = asyncio.Queue()
     closed = []
@@ -63,6 +69,9 @@ async def test_real_setup_sensor_updates_environment_identity_and_unload(
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         assert entry.state is ConfigEntryState.LOADED
+        assert entry.version == 4
+        assert "password" not in entry.data
+        assert "eva.credentials" in hass_storage
         coordinator = entry.runtime_data
         test_session = coordinator.client._session
         assert sessions.call_count == 1
@@ -153,6 +162,116 @@ async def test_setup_connection_failure_retries_and_cleans_up(hass):
     assert clients[0]._session.closed
     assert not hass.states.async_entity_ids("sensor")
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_missing_password_prompts_reauth_without_opening_a_session(hass):
+    entry = make_entry(hass)
+    credentials = await async_get_credentials(hass)
+    credentials.accounts.clear()
+    with patch("custom_components.eva.async_create_clientsession") as session:
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    session.assert_not_called()
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert len(flows) == 1
+    assert flows[0]["step_id"] == "reauth_confirm"
+
+
+@pytest.mark.parametrize("version", [1, 2])
+async def test_migration_preserves_identity_and_moves_password_to_shared_storage(
+    hass, hass_storage, saved_credentials, version
+):
+    saved_credentials.accounts.clear()
+    entry = make_entry(hass)
+    data = dict(entry.data)
+    if version == 1:
+        data["password"] = "migrated-password"
+    else:
+        await saved_credentials.async_save(
+            "test", data["username"], "migrated-password"
+        )
+    hass.config_entries.async_update_entry(entry, version=version, data=data)
+    assert await async_migrate_entry(hass, entry)
+    assert await async_migrate_entry(hass, entry)
+    assert entry.version == 4
+    assert dict(entry.data) == {
+        key: value for key, value in data.items() if key != "password"
+    }
+    assert entry.unique_id == "test:test-home"
+    assert (
+        hass_storage["eva.credentials"]["data"]["test"][data["username"]]
+        == "migrated-password"
+    )
+
+
+async def test_migration_does_not_replace_newer_shared_password(
+    hass, saved_credentials
+):
+    entry = make_entry(hass)
+    hass.config_entries.async_update_entry(
+        entry, version=1, data={**entry.data, "password": "outdated-password"}
+    )
+    assert await async_migrate_entry(hass, entry)
+    assert saved_credentials.accounts["test"][entry.data["username"]] == "test-password"
+    assert "password" not in entry.data
+
+
+async def test_failed_migration_keeps_original_password(hass, saved_credentials):
+    saved_credentials.accounts.clear()
+    entry = make_entry(hass)
+    original = {**entry.data, "password": "original-password"}
+    hass.config_entries.async_update_entry(entry, version=1, data=original)
+    with patch(
+        "homeassistant.helpers.storage.Store._async_write_data",
+        side_effect=WriteError("disk full"),
+    ):
+        with pytest.raises(HomeAssistantError):
+            await async_migrate_entry(hass, entry)
+    assert entry.version == 1
+    assert dict(entry.data) == original
+
+
+async def test_oauth_migration_recovers_email_and_prompts_password_login(
+    hass, hass_storage, saved_credentials
+):
+    saved_credentials.accounts.clear()
+    hass_storage["eva.oauth"] = {
+        "version": 1,
+        "key": "eva.oauth",
+        "data": {
+            env: {"test-account": {"email": "test@example.invalid"}}
+            for env in ("test", "prod")
+        },
+    }
+    entries = [make_entry(hass, env) for env in ("test", "prod")]
+    for entry in entries:
+        data = {key: value for key, value in entry.data.items() if key != "username"}
+        data.update(
+            account_id="test-account",
+            issuer="https://login.example.invalid",
+            auth_implementation="old-client",
+        )
+        hass.config_entries.async_update_entry(entry, version=3, data=data)
+    assert await async_migrate_entry(hass, entries[0])
+    assert "eva.oauth" in hass_storage
+    assert await async_migrate_entry(hass, entries[1])
+    assert "eva.oauth" not in hass_storage
+    for entry in entries:
+        assert entry.version == 4
+        assert entry.data["username"] == "test@example.invalid"
+        assert not {
+            "password",
+            "account_id",
+            "issuer",
+            "auth_implementation",
+        }.intersection(entry.data)
+    assert not await hass.config_entries.async_setup(entries[0].entry_id)
+    await hass.async_block_till_done()
+    assert all(entry.state is ConfigEntryState.SETUP_ERROR for entry in entries)
+    assert all(
+        flow["step_id"] == "reauth_confirm"
+        for flow in hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    )
 
 
 @pytest.mark.parametrize("removal", ["event", "event_home", "snapshot", "reload"])
