@@ -254,6 +254,20 @@ async def test_native_platforms_commands_updates_and_cleanup(
                 "turn_on",
                 "lamp:light",
                 {"brightness": 255, "hs_color": [90, 25]},
+                ("devices", "lamp", "attributes", "colorSaturation", "25"),
+            ),
+            (
+                "light",
+                "turn_off",
+                "lamp:light",
+                {},
+                ("devices", "lamp", "attributes", "on", "false"),
+            ),
+            (
+                "light",
+                "turn_on",
+                "lamp:light",
+                {"brightness": 128},
                 ("devices", "lamp", "attributes", "on", "true"),
             ),
             (

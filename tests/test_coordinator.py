@@ -62,6 +62,75 @@ async def test_command_distinguishes_request_failure_from_missing_confirmation(
     assert not coordinator._command_listeners
 
 
+@pytest.mark.parametrize("resource", ["devices", "groups"])
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancel"])
+async def test_commands_serialize_each_resource_until_its_action_result(
+    hass, snapshot, resource, outcome
+):
+    coordinator = make_coordinator(hass, None)
+    coordinator.data = coordinator.data.apply(snapshot)
+    coordinator.last_update_success = True
+    sent = asyncio.Queue()
+
+    async def command(home_id, method, parts, payload):
+        action_id = f"{parts[1]}-{parts[-1]}"
+        sent.put_nowait(action_id)
+        return action_id
+
+    coordinator.client.async_command = AsyncMock(side_effect=command)
+
+    def start(target, value):
+        return hass.async_create_background_task(
+            coordinator.async_command(
+                "PATCH" if resource == "devices" else "POST",
+                (resource, target, "attributes", "dimLevel", value),
+            ),
+            "test command",
+        )
+
+    def receive(event_type, action_id=None):
+        for listener in tuple(coordinator._command_listeners):
+            listener({"eventType": event_type, "actionId": action_id})
+
+    first = start("lamp", "40")
+    assert await sent.get() == "lamp-40"
+    second = start("lamp", "60")
+    other = start("other-lamp", "50")
+    try:
+        assert await sent.get() == "other-lamp-50"
+        receive("deviceAttributeSent", "lamp-40")
+        receive("deviceAttributeChanged")
+        receive("deviceAttributeChanged", "unrelated-action")
+        receive("deviceAttributeChanged", "other-lamp-50")
+        await other
+        assert sent.empty()
+        assert not first.done()
+        assert not second.done()
+
+        if outcome == "cancel":
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+        elif outcome == "failure":
+            receive("actionTimeout", "lamp-40")
+            with pytest.raises(HomeAssistantError, match="could not complete"):
+                await first
+        else:
+            receive("deviceAttributeChanged", "lamp-40")
+            await first
+
+        assert await sent.get() == "lamp-60"
+        receive("deviceAttributeChanged", "lamp-40")
+        assert not second.done()
+        receive("deviceAttributeChanged", "lamp-60")
+        await second
+        assert not coordinator._command_listeners
+    finally:
+        for task in (first, second, other):
+            task.cancel()
+        await asyncio.gather(first, second, other, return_exceptions=True)
+
+
 async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(
     hass, snapshot
 ):

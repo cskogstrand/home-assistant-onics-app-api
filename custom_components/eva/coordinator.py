@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections import defaultdict
 from collections.abc import Callable
 from contextlib import aclosing, suppress
 
@@ -56,6 +57,9 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
         self._ready: asyncio.Future[None] = hass.loop.create_future()
         self._last_event_id: str | None = None
         self._command_listeners: set[Callable[[dict], None]] = set()
+        self._command_locks: defaultdict[tuple[str, ...], asyncio.Lock] = defaultdict(
+            asyncio.Lock
+        )
         self.external_status: dict[str, dict | None] = {}
         self._charger_task: asyncio.Task | None = None
 
@@ -98,6 +102,13 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
 
     async def async_command(
         self, method: str, parts: tuple[str, ...], payload: dict | None = None
+    ) -> None:
+        """Serialize each resource so newer writes cannot replace pending action IDs."""
+        async with self._command_locks[parts[:2]]:
+            await self._async_command(method, parts, payload)
+
+    async def _async_command(
+        self, method: str, parts: tuple[str, ...], payload: dict | None
     ) -> None:
         """Wait for an action result, including results arriving before HTTP returns."""
         if not self.last_update_success or (

@@ -9,8 +9,8 @@
         }
       },
       "login_method": {
-        "title": "Log in to Eva in {environment}",
-        "description": "Reuse a saved login or enter another account.",
+        "title": "Log in to Eva",
+        "description": "Reuse a saved login or enter another account in {environment}.",
         "menu_options": {
           "account": "Use a saved login",
           "login": "Log in with another user"

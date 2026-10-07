@@ -1,6 +1,8 @@
 """Exercise saved login selection, password login and reuse through real HA flows."""
 
+import json
 from copy import deepcopy
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
@@ -12,7 +14,7 @@ from homeassistant.util.file import WriteError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eva.api import EvaAuthError, EvaError, EvaRateLimitError
-from custom_components.eva.const import DOMAIN, ENVIRONMENTS
+from custom_components.eva.const import DOMAIN, ENVIRONMENT_NAMES, ENVIRONMENTS
 from custom_components.eva.credentials import async_get_credentials
 
 LOGIN = {"username": "test@example.invalid", "password": "test-password"}
@@ -66,6 +68,24 @@ async def test_environment_form_and_required_login_fields(hass):
     assert result["data_schema"].schema["password"].config["type"] == "password"
     with pytest.raises(InvalidData):
         await choose(hass, result, {})
+
+
+@pytest.mark.parametrize("environment", ENVIRONMENTS)
+async def test_login_menu_translation_placeholders(hass, environment):
+    credentials = await async_get_credentials(hass)
+    await credentials.async_save(environment, LOGIN["username"], LOGIN["password"])
+    result = await start(hass, environment)
+    assert result["type"] is FlowResultType.MENU
+    integration = Path(__file__).parents[1] / "custom_components" / DOMAIN
+    for filename in ("strings.json", "translations/en.json"):
+        step = json.loads((integration / filename).read_text())["config"]["step"][
+            "login_method"
+        ]
+        # HA menu headers receive no placeholders; only descriptions do.
+        assert step["title"].format() == "Log in to Eva"
+        assert ENVIRONMENT_NAMES[environment] in step["description"].format(
+            **result["description_placeholders"]
+        )
 
 
 @pytest.mark.parametrize("environment", ["prod", "test", "qa"])

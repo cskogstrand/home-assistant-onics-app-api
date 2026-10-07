@@ -145,6 +145,8 @@ class EvaLight(EvaEntity, LightEntity):
             raise ServiceValidationError("This device has no on/off capability")
         self.validate_writes(writes)
         for key, value in writes:
+            if key == "on" and len(writes) > 1 and self.is_on is True:
+                continue
             await self.async_write(key, value)
 
     async def async_turn_off(self, **kwargs):
