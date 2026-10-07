@@ -147,7 +147,8 @@ class EvaLight(EvaEntity, LightEntity):
         for key, value in writes:
             if key == "on" and len(writes) > 1 and self.is_on is True:
                 continue
-            await self.async_write(key, value)
+            if not await self.async_write(key, value):
+                return
 
     async def async_turn_off(self, **kwargs):
         await self.async_write("on", False)

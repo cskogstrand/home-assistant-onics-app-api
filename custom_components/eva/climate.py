@@ -125,7 +125,8 @@ class EvaClimate(EvaAttributeEntity, ClimateEntity):
                 writes.append(("on", mode == HVACMode.HEAT))
         self.validate_writes(writes)
         for key, value in writes:
-            await self.async_write(key, value)
+            if not await self.async_write(key, value):
+                return
 
     async def async_set_hvac_mode(self, hvac_mode):
         if hvac_mode not in self.hvac_modes:

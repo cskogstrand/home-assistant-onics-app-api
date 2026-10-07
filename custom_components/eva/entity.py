@@ -136,8 +136,8 @@ class EvaEntity(CoordinatorEntity[EvaCoordinator]):
             and self.device.get("online") is True
         )
 
-    async def async_write(self, key: str, value: Any) -> None:
-        """Validate once for all controls; let SSE confirm the actual new state."""
+    async def async_write(self, key: str, value: Any) -> bool:
+        """Validate and confirm a write; return False if a newer command replaces it."""
         self.check_control_available()
         try:
             value = validate_value(self.device, key, value)
@@ -147,7 +147,7 @@ class EvaEntity(CoordinatorEntity[EvaCoordinator]):
             value if isinstance(value, str) else json.dumps(value, allow_nan=False)
         )
         resource = self.device.get("resource", "devices")
-        await self.coordinator.async_command(
+        return await self.coordinator.async_command(
             "POST" if resource == "groups" else "PATCH",
             (
                 resource,

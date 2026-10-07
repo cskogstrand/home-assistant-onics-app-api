@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from collections import defaultdict
 from collections.abc import Callable
 from contextlib import aclosing, suppress
 
@@ -57,9 +56,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
         self._ready: asyncio.Future[None] = hass.loop.create_future()
         self._last_event_id: str | None = None
         self._command_listeners: set[Callable[[dict], None]] = set()
-        self._command_locks: defaultdict[tuple[str, ...], asyncio.Lock] = defaultdict(
-            asyncio.Lock
-        )
+        self._pending_commands: dict[tuple[str, ...], asyncio.Future[str | None]] = {}
         self.external_status: dict[str, dict | None] = {}
         self._charger_task: asyncio.Task | None = None
 
@@ -102,15 +99,8 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
 
     async def async_command(
         self, method: str, parts: tuple[str, ...], payload: dict | None = None
-    ) -> None:
-        """Serialize each resource so newer writes cannot replace pending action IDs."""
-        async with self._command_locks[parts[:2]]:
-            await self._async_command(method, parts, payload)
-
-    async def _async_command(
-        self, method: str, parts: tuple[str, ...], payload: dict | None
-    ) -> None:
-        """Wait for an action result, including results arriving before HTTP returns."""
+    ) -> bool:
+        """Send immediately; return False when a newer resource command supersedes it."""
         if not self.last_update_success or (
             not self.data.gateway_online and "external" not in parts
         ):
@@ -118,8 +108,15 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
         action_id = None
         early_results: dict[str, str] = {}
         result = self.hass.loop.create_future()
+        resource = parts[:2]
+        previous = self._pending_commands.get(resource)
+        if previous is not None and not previous.done():
+            previous.set_result(None)
+        self._pending_commands[resource] = result
 
         def receive(event: dict) -> None:
+            if result.done():
+                return
             event_type = event.get("eventType", "")
             event_id = event.get("actionId")
             if not isinstance(event_id, str) or not (
@@ -128,7 +125,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                 return
             if action_id is None:
                 early_results[event_id] = event_type
-            elif event_id == action_id and not result.done():
+            elif event_id == action_id:
                 result.set_result(event_type)
 
         self._command_listeners.add(receive)
@@ -136,14 +133,19 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             action_id = await self.client.async_command(
                 self.home_id, method, parts, payload
             )
+            if self._pending_commands.get(resource) is not result:
+                return False
             if not action_id or "external" in parts:
-                return
+                return True
             if action_id in early_results:
                 result.set_result(early_results[action_id])
             async with asyncio.timeout(30):
                 event_type = await result
+            if event_type is None or self._pending_commands.get(resource) is not result:
+                return False
             if action_failed(event_type):
                 raise HomeAssistantError("Eva could not complete the command")
+            return True
         except EvaAuthError as err:
             self.config_entry.async_start_reauth(self.hass)
             raise HomeAssistantError("Eva authentication rejected") from err
@@ -154,6 +156,8 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                 "Eva accepted the command but did not confirm it within 30 seconds"
             ) from err
         finally:
+            if self._pending_commands.get(resource) is result:
+                del self._pending_commands[resource]
             self._command_listeners.discard(receive)
             result.cancel()
 

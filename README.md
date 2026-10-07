@@ -99,8 +99,10 @@ Do not use a production configuration directory here.
 - Commands validate types, ranges, steps and options before sending. Eva's SSE
   action result confirms completion; failed actions and timeouts raise Home
   Assistant errors. Writes are never retried and state is never optimistic.
-  Commands to the same device or group wait for the preceding action result so
-  rapid changes cannot replace its pending action ID. Other devices stay independent.
+  Commands are sent immediately. A newer command to the same device or group
+  replaces the previous confirmation wait and stops its remaining command steps.
+  Superseded results are ignored; the latest command still reports failures and
+  timeouts. Other devices stay independent.
 - External EV chargers use their separate status endpoint once per minute;
   polling failures make their entities unavailable. Start/stop acceptance is
   followed by the next status poll. Reconnect and Energy Saver restrictions are

@@ -64,7 +64,7 @@ async def test_command_distinguishes_request_failure_from_missing_confirmation(
 
 @pytest.mark.parametrize("resource", ["devices", "groups"])
 @pytest.mark.parametrize("outcome", ["success", "failure", "cancel"])
-async def test_commands_serialize_each_resource_until_its_action_result(
+async def test_new_commands_replace_old_waits_without_blocking(
     hass, snapshot, resource, outcome
 ):
     coordinator = make_coordinator(hass, None)
@@ -97,38 +97,81 @@ async def test_commands_serialize_each_resource_until_its_action_result(
     second = start("lamp", "60")
     other = start("other-lamp", "50")
     try:
+        assert await sent.get() == "lamp-60"
         assert await sent.get() == "other-lamp-50"
-        receive("deviceAttributeSent", "lamp-40")
+        assert await first is False
+        assert (resource, "lamp") in coordinator._pending_commands
+        receive("deviceAttributeChanged", "lamp-40")
+        receive("actionTimeout", "lamp-40")
+        receive("deviceAttributeSent", "lamp-60")
         receive("deviceAttributeChanged")
         receive("deviceAttributeChanged", "unrelated-action")
         receive("deviceAttributeChanged", "other-lamp-50")
-        await other
+        assert await other is True
         assert sent.empty()
-        assert not first.done()
         assert not second.done()
 
         if outcome == "cancel":
-            first.cancel()
+            second.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await first
+                await second
         elif outcome == "failure":
-            receive("actionTimeout", "lamp-40")
+            receive("actionTimeout", "lamp-60")
             with pytest.raises(HomeAssistantError, match="could not complete"):
-                await first
+                await second
         else:
-            receive("deviceAttributeChanged", "lamp-40")
-            await first
+            receive("deviceAttributeChanged", "lamp-60")
+            assert await second is True
 
-        assert await sent.get() == "lamp-60"
-        receive("deviceAttributeChanged", "lamp-40")
-        assert not second.done()
-        receive("deviceAttributeChanged", "lamp-60")
-        await second
         assert not coordinator._command_listeners
+        assert not coordinator._pending_commands
     finally:
         for task in (first, second, other):
             task.cancel()
         await asyncio.gather(first, second, other, return_exceptions=True)
+
+
+async def test_superseded_http_response_cannot_replace_latest_confirmation(
+    hass, snapshot
+):
+    coordinator = make_coordinator(hass, None)
+    coordinator.data = coordinator.data.apply(snapshot)
+    coordinator.last_update_success = True
+    first_sent = asyncio.Event()
+    first_response = asyncio.Event()
+
+    async def command(home_id, method, parts, payload):
+        if parts[-1] == "40":
+            first_sent.set()
+            await first_response.wait()
+            return "old-action"
+        # The latest success can arrive before either HTTP response.
+        for listener in tuple(coordinator._command_listeners):
+            listener({"eventType": "deviceAttributeChanged", "actionId": "new-action"})
+        return "new-action"
+
+    coordinator.client.async_command = AsyncMock(side_effect=command)
+    first = hass.async_create_background_task(
+        coordinator.async_command(
+            "PATCH", ("devices", "lamp", "attributes", "dimLevel", "40")
+        ),
+        "test delayed HTTP response",
+    )
+    try:
+        await first_sent.wait()
+        assert (
+            await coordinator.async_command(
+                "PATCH", ("devices", "lamp", "attributes", "dimLevel", "60")
+            )
+            is True
+        )
+        first_response.set()
+        assert await first is False
+        assert not coordinator._pending_commands
+        assert not coordinator._command_listeners
+    finally:
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
 
 
 async def test_snapshot_partial_update_disconnect_reconnect_and_shutdown(

@@ -602,6 +602,85 @@ async def test_command_handles_early_confirmation_and_failure(hass, snapshot, ou
     assert not coordinator._command_listeners
 
 
+@pytest.mark.parametrize(
+    "domain,key,service,data",
+    [
+        ("light", "light", "turn_on", {"brightness": 128}),
+        (
+            "climate",
+            "setpoint",
+            "set_temperature",
+            {"temperature": 23, "hvac_mode": "heat"},
+        ),
+    ],
+)
+async def test_superseded_compound_command_does_not_turn_device_back_on(
+    hass, snapshot, saved_credentials, domain, key, service, data
+):
+    snapshot["home"]["rooms"][0]["devices"] = [
+        device("control", {"on": False, "dimLevel": 50, "setpoint": 21})
+    ]
+    events = asyncio.Queue()
+    sent = asyncio.Queue()
+    action_number = 0
+
+    async def stream(*args):
+        yield snapshot
+        while True:
+            yield await events.get()
+
+    async def command(client, home_id, method, parts, payload):
+        nonlocal action_number
+        action_number += 1
+        sent.put_nowait(parts)
+        return f"action-{action_number}"
+
+    entry = make_entry(hass)
+    with (
+        patch("custom_components.eva.api.EvaClient.async_events", new=stream),
+        patch("custom_components.eva.api.EvaClient.async_command", new=command),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        target = entity_id(hass, domain, f"control:{key}")
+
+        def start(action, values):
+            return hass.async_create_background_task(
+                hass.services.async_call(
+                    domain, action, {"entity_id": target, **values}, blocking=True
+                ),
+                "test superseded service call",
+            )
+
+        first = start(service, data)
+        second = None
+        try:
+            parts = await sent.get()
+            assert parts[3] == ("dimLevel" if domain == "light" else "setpoint")
+            second = start("turn_off", {})
+            assert (await sent.get())[3:] == ("on", "false")
+            await first
+            events.put_nowait(
+                {
+                    "eventType": "deviceAttributeChanged",
+                    "actionId": "action-2",
+                    "deviceId": "control",
+                    "name": "on",
+                    "value": False,
+                }
+            )
+            await second
+            assert action_number == 2
+            assert not entry.runtime_data._pending_commands
+            assert not entry.runtime_data._command_listeners
+        finally:
+            tasks = [task for task in (first, second) if task is not None]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            assert await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_external_charger_polling_controls_and_unload(
     hass, snapshot, saved_credentials
 ):
