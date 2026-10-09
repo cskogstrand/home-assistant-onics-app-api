@@ -25,6 +25,8 @@ def description(key):
             state_class = (
                 None  # Rolling hourly values are not cumulative meter readings.
             )
+        elif key == "gatewayUpdateHour":
+            state_class = None
     return SensorEntityDescription(
         key=key,
         translation_key=translation_key(key) if key in ATTRIBUTES else None,

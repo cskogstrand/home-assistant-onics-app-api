@@ -4,6 +4,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
+from homeassistant.const import EntityCategory
 
 from .capabilities import ATTRIBUTES, platform_for
 from .entity import EvaAttributeEntity, async_discover, translation_key
@@ -23,6 +24,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
                     key=key,
                     translation_key=translation_key(key),
                     device_class=ATTRIBUTES[key].device_class,
+                    entity_category=EntityCategory.DIAGNOSTIC
+                    if ATTRIBUTES[key].diagnostic
+                    else None,
                 ),
             )
             for key in device["attributes"]

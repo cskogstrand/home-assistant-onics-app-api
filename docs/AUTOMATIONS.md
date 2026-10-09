@@ -27,7 +27,7 @@ mood switches can produce these events as well as actions from HA or the app.
 | A mood is activated | `moodActivated` with `moodId` | Means the mood's target attributes are active. It does not identify a physical button or prove a human pressed one. |
 | A scene becomes active/inactive | Scene `active` attribute, or `activeMoodsChanged` | `activeMoodsChanged` carries the full list of active mood IDs, including an empty list. |
 | A gateway/device is reported online/offline | Corresponding `eva_event`, or entity availability state | Online/offline events may repeat. An unavailable entity can also indicate an SSE or polling failure. |
-| Alarm arming/disarming, exit completion or entry countdown | Alarm entity state or profile/countdown event | Modes are `disarmed`, `dayArmed`, `nightArmed`, `armed`. Alert events do not set the alarm entity to `triggered`. See the countdown issue in the review. |
+| Alarm arming/disarming, exit completion or entry countdown | Alarm entity state or profile/countdown event | Modes are `disarmed`, `dayArmed`, `nightArmed`, `armed`. Alert events do not set the alarm entity to `triggered`. Unrelated snapshots retain countdowns; the exit deadline is reconstructed from the profile when possible. |
 | Breaker/tariff limit changes, warning, pairing progress or action failure | Matching `eva_event` | These signals need not change an entity state. |
 | External charger starts/stops or a car plugs in | Charger entity state | Status is polled about once per minute; the poll itself does not fire `eva_event`. |
 
@@ -50,7 +50,8 @@ mood switches can produce these events as well as actions from HA or the app.
   event-ID deduplication or exactly-once guarantee. If a notification is
   delivered again after the snapshot, it fires again. `id` is retained when
   supplied; duplicate-sensitive actions need their own guard. The upcoming
-  `cameraMotionDetected` event is explicitly not replayed by the API.
+  `cameraMotionDetected` and `activeProfileEntryTimeStarted` events are explicitly
+  not replayed by the API. Entry countdowns missed while offline remain unknown.
 - `deviceAttributeSent` and `groupAttributeSent` mean a write is pending. They
   do not change the reported value or confirm completion. Correlate a result
   using `actionId` when present; physical changes may have no `actionId`.
@@ -69,22 +70,25 @@ an entry when the same home identifier exists in multiple environments.
 | Fields | Allowed shape |
 | --- | --- |
 | `id`, `timestamp`, `actionId`, `deviceId`, `groupId`, `moodId`, `roomId`, `ruleId`, `timelineId`, `subscriptionId`, `externalDeviceId` | Scalar string, boolean, number or null, as supplied. Device/home/mood IDs normally use strings; group IDs use integers. |
-| `name`, `value`, `updatedAt`, `progress`, `softwareVersion`, `automaticSoftwareUpdates`, `estimatedExitDelayExpiresAt`, `estimatedEntryDelayExpiresAt`, `testModeUntil` | Scalar string, boolean, number or null. Object/array `value` is omitted. |
+| `name`, `updatedAt`, `progress`, `softwareVersion`, `estimatedExitDelayExpiresAt`, `estimatedEntryDelayExpiresAt`, `testModeUntil` | Scalar string, boolean, number or null. |
+| `value` | Scalar only for device/group attribute changed/report events. For `cameraMotionDetected`, an object retaining string `deviceId`, `kind`, `state`, `cameraEventType`, `detectedAt`. All other event values are omitted. |
+| `automaticSoftwareUpdates` | Object retaining scalar `enabled`, `hourOfDay`; the older scalar form is also retained when supplied. |
+| `homeEvent` | Object retaining scalar `id`, `timestamp`, `iconType`. No translated title or body text. |
 | `activeProfile` | Object retaining only scalar `mode`. |
 | `softwareUpdate` | Object retaining only scalar `status`, `version`, `progress`. |
 | `alert` | Object retaining scalar `id`, `type`, `active`, `status`; alternatively a string or boolean. The API may supply different shapes, so inspect before filtering nested fields. |
 | `activeMoods` | List retaining only strings. |
 | `warnings` | List of objects retaining only string/boolean `id`, `type`, `severity`, `alarm`, `dismissible`. |
 
-Full `home`, `homeFeatures`, `homeEvent`, `userEmail`, user details, `deviceName`,
+Full `home`, `homeFeatures`, `userEmail`, user details, `deviceName`,
 `homeUserId`, PIN/RFID fields, lock-access identifiers/labels/types, free-form
 errors/warnings, attribute metadata such as `options`/`preview`, and unknown
 fields are not forwarded. Changes to a snapshot alone do not make its fields
 available in `trigger.event.data`.
 
-**Known exception:** scalar `value` is not filtered by event type. An upcoming
-`cameraProvisioningQrCreated` event would include its sensitive QR string.
-Do not log or publish its payload; see the [redaction finding](API_REVIEW.md#confirmed-issues).
+Provisioning QR strings, live-view session/SDP data and unknown event values are
+withheld. Receiving an unfamiliar business event still forwards its event name
+and permitted envelope fields, without trusting its `value` payload.
 
 ## Trigger examples
 
@@ -233,22 +237,24 @@ in [`tests/fixtures/sse_events.json`](../tests/fixtures/sse_events.json).
 ## Events outside the main table
 
 `homeEventCreated` means a new home activity-log item exists. It fires
-`eva_event` after the snapshot, but its `homeEvent` object is discarded, so
-automations cannot inspect the log item's `iconType`, title or body.
+`eva_event` after the snapshot, retaining `homeEvent.id`, `homeEvent.timestamp`
+and `homeEvent.iconType`. Automations can filter by `iconType`; private/translated
+titles and bodies are withheld.
 
 The following names are in the separate **upcoming** camera documentation.
 Their event names and allowed envelope fields are generically forwarded, but
-this does not mean native camera functionality is implemented. Structured
-`value` data is omitted; scalar `value` data is forwarded unchanged.
+this does not mean native camera functionality is implemented. Only motion
+events retain the selected `value` fields described above; other camera values
+are withheld.
 
 | `eventType` | Cause and current payload limitation |
 | --- | --- |
-| `cameraProvisioningWifiUpdated`, `cameraProvisioningQrCreated` | Provisioning acknowledgement/QR generation. QR scalar is sensitive and currently forwarded: see the review. |
+| `cameraProvisioningWifiUpdated`, `cameraProvisioningQrCreated` | Provisioning acknowledgement/QR generation. The sensitive QR value is withheld. |
 | `cameraScanUpdated` | Camera discovery progress; scan detail object is omitted. |
 | `cameraLiveViewOffered` | Live/playback offer; session/SDP/candidate object is omitted. |
-| `cameraLiveViewAnswered`, `cameraLiveViewEnded` | Session answer/end acknowledged; scalar session ID can remain in `value`. |
+| `cameraLiveViewAnswered`, `cameraLiveViewEnded` | Session answer/end acknowledged; session ID is withheld. |
 | `cameraMoveAccepted` | Movement request accepted; detail object is omitted. |
-| `cameraMotionDetected` | Camera motion/person start or end; kind/state/timing object is omitted. Not replayed. |
+| `cameraMotionDetected` | Camera motion/person start or end; string kind/state/timing fields are retained. Not replayed. |
 | `cameraRecordingUpdated`, `cameraRecordingRemoved` | Recording status changes or recording deletion; structured recording detail is omitted. |
 | `cameraRecordingsRefreshed`, `cameraRecordingsDeleted` | Recording list refresh or bulk deletion completes; structured counts are omitted. |
 | `cameraRecordingRetentionUpdated`, `cameraAlarmRecordingUpdated` | Retention or alarm-recording configuration changes; structured settings are omitted. |

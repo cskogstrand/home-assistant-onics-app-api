@@ -35,6 +35,17 @@ def _add(names: str, **kwargs: Any) -> None:
 _add("charging", platform="switch", kind=bool)
 _add("carPluggedIn", platform="binary_sensor", kind=bool, device_class="plug")
 _add("currentPower", unit="W", device_class="power")
+_add("energySaverEnabled", platform="switch", kind=bool)
+_add("gatewayAutomaticUpdates", platform="binary_sensor", kind=bool, diagnostic=True)
+_add("gatewayUpdateHour", kind=int, diagnostic=True)
+_add(
+    "gatewayOnline",
+    platform="binary_sensor",
+    kind=bool,
+    device_class="connectivity",
+    diagnostic=True,
+)
+_add("gatewayLastActivity gatewaySetupState", kind=str, diagnostic=True)
 
 
 _add(

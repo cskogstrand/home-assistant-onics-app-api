@@ -25,10 +25,11 @@ async def async_setup_entry(hass, entry, async_add_entities):
             [
                 EvaScene(coordinator, mood_id)
                 for mood_id in moods
-                if mood_id not in known
+                if mood_id not in known and coordinator.data.feature_enabled("moods")
             ]
         )
-        known.update(moods)
+        if coordinator.data.feature_enabled("moods"):
+            known.update(moods)
 
     discover()
     entry.async_on_unload(coordinator.async_add_listener(discover))
@@ -50,6 +51,7 @@ class EvaScene(CoordinatorEntity, Scene):
     def available(self):
         return (
             super().available
+            and self.coordinator.data.feature_enabled("moods")
             and self.coordinator.data.gateway_online
             and self._mood_id in self.coordinator.data.moods
         )

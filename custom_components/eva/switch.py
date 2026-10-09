@@ -46,6 +46,15 @@ class EvaSwitch(EvaAttributeEntity, SwitchEntity):
         await self._async_set(False)
 
     async def _async_set(self, value):
+        if self.entity_description.key == "energySaverEnabled":
+            self.validate_writes([("energySaverEnabled", value)])
+            await self.coordinator.async_command(
+                "PATCH",
+                ("devices", self._device_id),
+                {"energySaverEnabled": value},
+                requires_gateway=False,
+            )
+            return
         if self.entity_description.key == "charging":
             self.validate_writes([("charging", value)])
             self.check_control_available()

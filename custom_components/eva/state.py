@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from typing import Any
 
 
@@ -18,9 +19,42 @@ class HomeState:
     gateway_online: bool
     moods: dict[str, dict[str, Any]] = field(default_factory=dict)
     alarm: dict[str, Any] = field(default_factory=dict)
+    features: dict[str, bool] = field(default_factory=dict)
+    groups: dict[int, dict] = field(default_factory=dict)
+
+    def feature_enabled(self, name: str) -> bool:
+        """Use server flags; older streams without flags retain capability discovery."""
+        return self.features.get(name, True)
+
+    def device_enabled(self, device: dict) -> bool:
+        """Require each advertised home feature used by this device."""
+        attributes = device.get("attributes", {})
+        return all(
+            self.feature_enabled(name)
+            for name, applies in {
+                "groups": device.get("resource") == "groups",
+                "externalDevices": device.get("external") is True,
+                "evCharger": device.get("type") in ("evCharger", "evChargingStation"),
+                "thermostats": "setpoint" in attributes,
+                "doorLock": "locked" in attributes,
+                "cameras": device.get("type") == "CAMERA",
+            }.items()
+            if applies
+        )
 
     def apply(self, event: dict[str, Any]) -> HomeState:
         """Replace snapshots; merge only the fields actually supplied in events."""
+        if event.get("eventType") == "homeFeatures":
+            features = event.get("homeFeatures")
+            if not isinstance(features, dict) or any(
+                not isinstance(value, dict) or type(value.get("enabled")) is not bool
+                for value in features.values()
+            ):
+                raise InvalidEvent("Invalid home features")
+            return replace(
+                self,
+                features={key: value["enabled"] for key, value in features.items()},
+            )
         if "home" in event:
             home = event["home"]
             if not isinstance(home, dict) or home.get("id") != self.home_id:
@@ -77,6 +111,21 @@ class HomeState:
                             },
                             "room_name": room.get("name"),
                         }
+            groups = home.get("groups", [])
+            if not isinstance(groups, list) or any(
+                not isinstance(group, dict)
+                or type(group.get("id")) is not int
+                or not isinstance(group.get("deviceIds"), list)
+                or any(not isinstance(member, str) for member in group["deviceIds"])
+                for group in groups
+            ):
+                raise InvalidEvent("Invalid top-level groups")
+            if isinstance(gateway.get("id"), str) and gateway["id"]:
+                devices[f"gateway:{gateway['id']}"] = {
+                    **deepcopy(gateway),
+                    "resource": "gateway",
+                    "attributes": {},
+                }
             profile = home.get("activeProfile")
             settings = home.get("settings") or {}
             if not isinstance(settings, dict) or not isinstance(
@@ -85,13 +134,59 @@ class HomeState:
                 raise InvalidEvent("Invalid alarm settings")
             alarm = {}
             if isinstance(profile, dict):
+                mode = profile.get("mode")
+                changed_at = profile.get("modeChangedAt")
+                same_profile = mode == self.alarm.get("mode") and (
+                    changed_at is None
+                    or self.alarm.get("mode_changed_at") is None
+                    or changed_at == self.alarm["mode_changed_at"]
+                )
                 alarm = {
-                    "mode": profile.get("mode"),
+                    "mode": mode,
+                    "mode_changed_at": changed_at,
                     "pin_required": settings.get("alarm", {}).get("pinRequired")
                     is True,
                 }
+                if mode in ("armed", "dayArmed", "nightArmed"):
+                    if same_profile:
+                        alarm.update(
+                            {
+                                key: self.alarm[key]
+                                for key in ("entry_at", "exit_at")
+                                if key in self.alarm
+                            }
+                        )
+                    profiles = home.get("profiles", {})
+                    durations = (
+                        profiles.get(mode, {}) if isinstance(profiles, dict) else {}
+                    )
+                    duration = (
+                        durations.get("exitDuration", 30)
+                        if isinstance(durations, dict)
+                        else None
+                    )
+                    if (
+                        "exit_at" not in alarm
+                        and isinstance(changed_at, str)
+                        and type(duration) is int
+                        and 0 <= duration <= 120
+                    ):
+                        try:
+                            changed = datetime.fromisoformat(changed_at)
+                            if changed.tzinfo is not None:
+                                alarm["exit_at"] = (
+                                    changed + timedelta(seconds=duration)
+                                ).isoformat()
+                        except ValueError, OverflowError:
+                            pass
             return HomeState(
-                self.home_id, devices, gateway.get("online") is True, moods, alarm
+                self.home_id,
+                devices,
+                gateway.get("online") is True,
+                moods,
+                alarm,
+                self.features,
+                {group["id"]: deepcopy(group) for group in groups},
             )
 
         event_type = event.get("eventType")
@@ -99,6 +194,29 @@ class HomeState:
             return HomeState(self.home_id, {}, False)
         if event_type in {"gatewayOnline", "gatewayOffline"}:
             return replace(self, gateway_online=event_type == "gatewayOnline")
+        if event_type in {
+            "gatewaySoftwareUpdateAvailable",
+            "gatewaySoftwareUpdateAssigned",
+            "gatewaySoftwareUpdateInProgress",
+            "gatewayAutomaticSoftwareUpdatesSaved",
+        }:
+            key = (
+                "automaticSoftwareUpdates"
+                if event_type == "gatewayAutomaticSoftwareUpdatesSaved"
+                else "softwareUpdate"
+            )
+            value = event.get(key)
+            if not isinstance(value, dict):
+                return self
+            return replace(
+                self,
+                devices={
+                    device_id: {**device, key: deepcopy(value)}
+                    if device.get("resource") == "gateway"
+                    else device
+                    for device_id, device in self.devices.items()
+                },
+            )
         if event_type == "activeMoodsChanged":
             active = event.get("activeMoods")
             if not isinstance(active, list) or any(
@@ -131,6 +249,7 @@ class HomeState:
                 self,
                 alarm={
                     "mode": profile.get("mode"),
+                    "mode_changed_at": profile.get("modeChangedAt"),
                     "pin_required": self.alarm.get("pin_required", False),
                     "exit_at": event.get("estimatedExitDelayExpiresAt"),
                 },
@@ -151,6 +270,18 @@ class HomeState:
             "groupOffline",
             "groupDeleted",
         }:
+            if type(event.get("groupId")) is int and event["groupId"] in self.groups:
+                if event_type == "groupDeleted":
+                    return replace(
+                        self,
+                        groups={
+                            key: group
+                            for key, group in self.groups.items()
+                            if key != event["groupId"]
+                        },
+                    )
+                # Top-level groups report their members' states, not an aggregate.
+                return self
             device_id = f"group:{event.get('groupId')}"
             event_type = event_type.replace("group", "device", 1)
         if not isinstance(device_id, str):

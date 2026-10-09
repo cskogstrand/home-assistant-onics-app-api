@@ -128,6 +128,11 @@ not exposed. See the [API functionality review](docs/API_REVIEW.md) for confirme
 gaps and the [automation event guide](docs/AUTOMATIONS.md) for event causes,
 payload fields, exclusions, replay behavior and copyable trigger examples.
 
+The confirmed issues in that review are now fixed: event redaction, alarm
+countdown retention/reconstruction, optional lock PINs, home feature flags, and
+safe motion/activity event details. The [HA action guide](docs/ACTIONS.md)
+documents the added controls and on-demand data queries.
+
 The 65 main event types documented as containing a complete home replace the
 local snapshot, including device/room/group/mood changes, firmware completion,
 settings, users and services. Any future event containing a home does the same.
@@ -150,9 +155,10 @@ alarm mode/countdowns and active mood IDs. Alert objects expose only scalar
 `id`, `type`, `active` and `status` fields; warnings expose only `id`, `type`,
 `severity`, `alarm` and `dismissible`. Full homes, user details, PINs, RFID tags,
 access labels, free-form warnings and unknown fields are excluded. Scalar `value`
-is allowed for any event type; the upcoming camera provisioning QR string is
-therefore not redacted. See the [review finding](docs/API_REVIEW.md#confirmed-issues)
-before using camera provisioning on an environment that supports it.
+is forwarded only for attribute change/report events. Camera provisioning QR
+strings and other unknown event values are withheld. `cameraMotionDetected`
+retains selected motion fields, and `homeEventCreated` retains only the activity
+ID, timestamp and icon type.
 
 For notifications without a documented state payload (such as `arcUpdated` and
 `energySaverDeviceStatusUpdated`), the event is the automation signal; no device
@@ -194,6 +200,27 @@ are mapped. Only capabilities actually advertised by the device create entities.
 Room groups use the same capability mappings as individual devices. Cumulative
 energy/water readings use statistics suitable for Home Assistant dashboards;
 rolling hourly energy estimates do not masquerade as cumulative meters.
+
+Gateways expose connection diagnostics, a ping button, firmware installation,
+and reported automatic-update settings. A single action sets update enablement
+and hour together. Eligible or already configured devices expose an Energy Saver
+switch. Home feature flags
+disable affected entities and commands; older streams without flags retain
+capability-based discovery.
+
+Top-level groups have no reported aggregate state. Use `eva.get_groups` and
+`eva.set_group_attribute` to discover/control them; every member is validated
+before the group command is sent. Other actions provide manual attribute reads,
+Danalock calibration, Energy Saver settings/overrides/away scheduling/priority,
+plans/prices/history, measured history and external charger statistics. See
+[HA actions](docs/ACTIONS.md) for fields and examples. These actions are available
+to HA administrators and automations and always target a selected Eva entry.
+
+Locks accept an optional numeric code through HA's standard unlock action and
+default lock code setting. A PIN-bearing unlock is acknowledged by the gateway;
+the lock state still changes only after Eva reports it. Exit countdowns can be
+reconstructed after restart; an entry countdown missed while offline cannot be
+reconstructed because the API does not replay that event.
 
 Device-provided bounds, steps and options take precedence. Numeric settings
 without documented bounds and enum settings without options remain read-only

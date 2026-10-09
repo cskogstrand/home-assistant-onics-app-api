@@ -295,6 +295,15 @@
       },
       "current_power": {
         "name": "Current power"
+      },
+      "gateway_last_activity": {
+        "name": "Last activity"
+      },
+      "gateway_setup_state": {
+        "name": "Setup state"
+      },
+      "gateway_update_hour": {
+        "name": "Automatic update hour"
       }
     },
     "binary_sensor": {
@@ -354,6 +363,12 @@
       },
       "car_plugged_in": {
         "name": "Car plugged in"
+      },
+      "gateway_online": {
+        "name": "Connection"
+      },
+      "gateway_automatic_updates": {
+        "name": "Automatic firmware updates"
       }
     },
     "switch": {
@@ -392,6 +407,9 @@
       },
       "charging": {
         "name": "Charging"
+      },
+      "energy_saver_enabled": {
+        "name": "Energy Saver"
       }
     },
     "number": {
@@ -490,6 +508,9 @@
     "button": {
       "identify": {
         "name": "Identify"
+      },
+      "ping": {
+        "name": "Check connection"
       }
     },
     "update": {
@@ -500,6 +521,272 @@
     "alarm_control_panel": {
       "alarm": {
         "name": "Alarm"
+      }
+    }
+  },
+  "services": {
+    "read_attribute": {
+      "name": "Request device report",
+      "description": "Request one fresh attribute report. Sleepy devices must be awake; repeated unanswered requests can mark them offline.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "device_id": {
+          "name": "Eva device ID",
+          "description": "Use the API deviceId from an eva_event, not the Home Assistant device registry ID."
+        },
+        "attribute": {
+          "name": "Attribute",
+          "description": "A reported Eva attribute name, for example on, dimLevel or acPower."
+        }
+      }
+    },
+    "calibrate_lock": {
+      "name": "Calibrate Danalock",
+      "description": "Start auto-calibration on a Danalock V3 lock. Follow the lock manufacturer’s physical installation instructions first.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "device_id": {
+          "name": "Eva device ID",
+          "description": "Use the API deviceId from an eva_event, not the Home Assistant device registry ID."
+        }
+      }
+    },
+    "get_groups": {
+      "name": "Get top-level groups",
+      "description": "Return top-level group IDs, names and member device IDs for this home.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        }
+      }
+    },
+    "set_group_attribute": {
+      "name": "Control top-level group",
+      "description": "Set a shared attribute after validating every member. All members must be online and allow manual control.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "group_id": {
+          "name": "Group ID",
+          "description": "Integer ID returned by Get top-level groups."
+        },
+        "attribute": {
+          "name": "Attribute",
+          "description": "A reported Eva attribute name, for example on, dimLevel or acPower."
+        },
+        "value": {
+          "name": "Value",
+          "description": "Use a YAML boolean, number or string matching the attribute type."
+        }
+      }
+    },
+    "configure_energy_saver": {
+      "name": "Configure device Energy Saver",
+      "description": "Change charging or heating preferences, capacity management or an override. Uses existing settings, or creates them for an eligible device.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "device_id": {
+          "name": "Eva device ID",
+          "description": "Use the API deviceId from an eva_event, not the Home Assistant device registry ID."
+        },
+        "settings": {
+          "name": "Settings",
+          "description": "Documented Energy Saver settings using API field names. See the integration action guide for examples."
+        }
+      }
+    },
+    "configure_home_energy_saver": {
+      "name": "Configure home Energy Saver",
+      "description": "Schedule away mode or change the home’s throttling strategy.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "settings": {
+          "name": "Settings",
+          "description": "Documented Energy Saver settings using API field names. See the integration action guide for examples."
+        }
+      }
+    },
+    "set_energy_saver_priority": {
+      "name": "Set Energy Saver priority",
+      "description": "Order devices from highest to lowest priority. Omitted devices become lowest priority; an empty list clears the ordering.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "device_ids": {
+          "name": "Device priority order",
+          "description": "List Eva device IDs from highest to lowest priority. Each must already be configured in Energy Saver."
+        }
+      }
+    },
+    "get_energy_saver": {
+      "name": "Get Energy Saver data",
+      "description": "Return settings, summary, plan, event log, prices or throttle priority on demand.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "device_id": {
+          "name": "Eva device ID",
+          "description": "Use the API deviceId from an eva_event, not the Home Assistant device registry ID."
+        },
+        "kind": {
+          "name": "Data to retrieve",
+          "description": "Plans and prices require start and stop timestamps. Settings, summary, plan and device eventlog require a device ID."
+        },
+        "time_start": {
+          "name": "Start time",
+          "description": "ISO timestamp including timezone, for example 2026-10-09T00:00:00+02:00."
+        },
+        "time_stop": {
+          "name": "End time",
+          "description": "ISO timestamp including timezone, later than the start time."
+        },
+        "count": {
+          "name": "Record count",
+          "description": "Number of records to request."
+        },
+        "start_time_key": {
+          "name": "Next-page key",
+          "description": "Copy nextPageStartTimeKey from the previous Energy Saver event-log response unchanged."
+        }
+      }
+    },
+    "get_measurements": {
+      "name": "Get historical measurements",
+      "description": "Return recorded measurements for one reported device attribute, optionally aggregated.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "device_id": {
+          "name": "Eva device ID",
+          "description": "Use the API deviceId from an eva_event, not the Home Assistant device registry ID."
+        },
+        "time_start": {
+          "name": "Start time",
+          "description": "ISO timestamp including timezone, for example 2026-10-09T00:00:00+02:00."
+        },
+        "time_stop": {
+          "name": "End time",
+          "description": "ISO timestamp including timezone, later than the start time."
+        },
+        "time_zone": {
+          "name": "Time zone",
+          "description": "IANA time zone used to interpret local days and daylight saving time, for example Europe/Oslo."
+        },
+        "attribute": {
+          "name": "Attribute",
+          "description": "A reported Eva attribute name, for example on, dimLevel or acPower."
+        },
+        "aggregate": {
+          "name": "Aggregate",
+          "description": "Aggregate the returned measurements."
+        },
+        "window_aggregate": {
+          "name": "Window aggregate",
+          "description": "Aggregate within each window."
+        },
+        "window_duration": {
+          "name": "Window duration",
+          "description": "A positive duration such as 1h or 1d."
+        },
+        "window_time": {
+          "name": "Window timestamp",
+          "description": "Return the start or stop time of each window."
+        },
+        "transform": {
+          "name": "Energy transform",
+          "description": "Calculate consumption from a cumulative meter or estimate it from power readings."
+        }
+      }
+    },
+    "get_charger_statistics": {
+      "name": "Get charger statistics",
+      "description": "Return hourly consumption for an external EV charger.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "device_id": {
+          "name": "Eva device ID",
+          "description": "Use the API deviceId from an eva_event, not the Home Assistant device registry ID."
+        },
+        "time_start": {
+          "name": "Start time",
+          "description": "ISO timestamp including timezone, for example 2026-10-09T00:00:00+02:00."
+        },
+        "time_stop": {
+          "name": "End time",
+          "description": "ISO timestamp including timezone, later than the start time."
+        },
+        "time_zone": {
+          "name": "Time zone",
+          "description": "IANA time zone used to interpret local days and daylight saving time, for example Europe/Oslo."
+        }
+      }
+    },
+    "get_home_events": {
+      "name": "Get home activity history",
+      "description": "Return a page of home activity records. Records can contain private names and descriptions.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "device_id": {
+          "name": "Eva device ID",
+          "description": "Use the API deviceId from an eva_event, not the Home Assistant device registry ID."
+        },
+        "mood_id": {
+          "name": "Mood ID",
+          "description": "Optional Eva mood ID to filter the activity history."
+        },
+        "offset": {
+          "name": "Page index",
+          "description": "Zero for the first page, one for the second page; this is not a row offset."
+        },
+        "count": {
+          "name": "Record count",
+          "description": "Number of records to request."
+        }
+      }
+    },
+    "configure_gateway_updates": {
+      "name": "Configure gateway automatic updates",
+      "description": "Set automatic firmware update enablement and its hour together. The hour uses the Eva home’s time zone.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eva home",
+          "description": "Select the configured Eva home and environment."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Allow automatic gateway firmware updates."
+        },
+        "hour_of_day": {
+          "name": "Hour of day",
+          "description": "Hour to start updates, from 0 to 23 in the Eva home’s time zone."
+        }
       }
     }
   }

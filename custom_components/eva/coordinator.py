@@ -99,17 +99,31 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             await asyncio.sleep(delay)
 
     async def async_command(
-        self, method: str, parts: tuple[str, ...], payload: dict | None = None
+        self,
+        method: str,
+        parts: tuple[str, ...],
+        payload: dict | None = None,
+        *,
+        requires_gateway: bool = True,
     ) -> bool:
         """Send immediately; return False when a newer resource command supersedes it."""
+        if parts[0] == "moods" and not self.data.feature_enabled("moods"):
+            raise HomeAssistantError("Moods are disabled for this Eva home")
+        if parts[0] in {"devices", "groups"}:
+            device_id = f"group:{parts[1]}" if parts[0] == "groups" else parts[1]
+            device = self.data.devices.get(device_id)
+            if device is not None and not self.data.device_enabled(device):
+                raise HomeAssistantError("This feature is disabled for the Eva home")
         if not self.last_update_success or (
-            not self.data.gateway_online and "external" not in parts
+            requires_gateway
+            and not self.data.gateway_online
+            and "external" not in parts
         ):
             raise HomeAssistantError("Eva home is unavailable")
         action_id = None
         early_results: dict[str, str] = {}
         result = self.hass.loop.create_future()
-        resource = parts[:2]
+        resource = parts[:3] if parts[:2] == ("energySaver", "devices") else parts[:2]
         previous = self._pending_commands.get(resource)
         if previous is not None and not previous.done():
             previous.set_result(None)
@@ -231,6 +245,8 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                         if "home" in event:
                             has_snapshot = True
                         state = self.data.apply(event)
+                        if event_type == "homeFeatures" and not has_snapshot:
+                            self.data = state
                         if has_snapshot:
                             if "home" in event:
                                 _LOGGER.debug(

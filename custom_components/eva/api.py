@@ -97,7 +97,7 @@ class EvaClient:
         payload: dict | None = None,
     ) -> str | None:
         """Send a command; never retry a write or follow an authenticated redirect."""
-        if not home_id or method not in {"PATCH", "POST"}:
+        if not home_id or method not in {"PATCH", "POST", "PUT"}:
             raise ValueError("Invalid command")
         path = "/".join(quote(part, safe="") for part in ("homes", home_id, *parts))
         try:
@@ -128,6 +128,29 @@ class EvaClient:
                 return action_id
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
             raise EvaError("Eva command request failed") from err
+
+    async def async_get_data(
+        self, home_id: str, parts: tuple[str, ...], params: dict | None = None
+    ) -> dict | list:
+        """Read on-demand data for a selected home without retaining private history."""
+        if not home_id:
+            raise ValueError("A home ID is required")
+        path = "/".join(quote(part, safe="") for part in ("homes", home_id, *parts))
+        try:
+            async with self._session.get(
+                f"{self._base_url}/{path}",
+                headers={**self._headers, "X-Partition-Key": home_id[-1]},
+                params=params or {},
+                timeout=aiohttp.ClientTimeout(total=30),
+                allow_redirects=False,
+            ) as response:
+                self._check_response(response)
+                result = await response.json()
+                if not isinstance(result, (dict, list)):
+                    raise EvaError("Invalid Eva data response")
+                return result
+        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+            raise EvaError("Unable to read Eva data") from err
 
     async def async_get_homes(self) -> list[dict[str, str]]:
         """List only home IDs and names, for either documented response shape."""

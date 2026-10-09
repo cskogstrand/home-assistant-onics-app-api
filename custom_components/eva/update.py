@@ -75,5 +75,8 @@ class EvaUpdate(EvaEntity, UpdateEntity):
                 "Only the available Eva firmware can be installed"
             )
         await self.coordinator.async_command(
-            "POST", ("devices", self._device_id, "updateSoftware")
+            "POST",
+            ("gateway", "updateSoftware")
+            if self.device.get("resource") == "gateway"
+            else ("devices", self._device_id, "updateSoftware"),
         )

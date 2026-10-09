@@ -243,3 +243,51 @@ async def test_external_charger_status_validation():
     }
     with pytest.raises(EvaError):
         await client.async_get_charger_status("test-home", "test-device")
+
+
+async def test_on_demand_data_is_scoped_and_encoded():
+    client, session, response = make_client(payload={"measurements": []})
+    result = await client.async_get_data(
+        "home/id",
+        ("energySaver", "devices", "external/id", "summary"),
+        {"startTimeKey": "opaque/+token"},
+    )
+    assert result == {"measurements": []}
+    args, kwargs = session.get.call_args
+    assert args[0].endswith(
+        "/homes/home%2Fid/energySaver/devices/external%2Fid/summary"
+    )
+    assert kwargs["params"] == {"startTimeKey": "opaque/+token"}
+    assert kwargs["headers"]["X-Partition-Key"] == "d"
+    assert kwargs["allow_redirects"] is False
+    assert kwargs["timeout"].total == 30
+    response.json.return_value = "unexpected scalar"
+    with pytest.raises(EvaError, match="Invalid Eva data"):
+        await client.async_get_data("test-home", ("events",))
+
+
+@pytest.mark.parametrize(
+    "status,error",
+    [(401, EvaAuthError), (429, EvaRateLimitError), (302, EvaError), (500, EvaError)],
+)
+async def test_on_demand_read_failure_is_not_retried(status, error):
+    client, session, _ = make_client(status=status)
+    with pytest.raises(error):
+        await client.async_get_data("test-home", ("energySaver", "throttlePriority"))
+    assert session.get.call_count == 1
+
+
+async def test_put_priority_uses_json_body():
+    client, session, response = make_client(status=200)
+    session.request.return_value.__aenter__ = AsyncMock(return_value=response)
+    session.request.return_value.__aexit__ = AsyncMock(return_value=False)
+    response.read = AsyncMock(return_value=b"")
+    payload = {"throttlePriority": ["external-heater"]}
+    assert (
+        await client.async_command(
+            "test-home", "PUT", ("energySaver", "throttlePriority"), payload
+        )
+        is None
+    )
+    assert session.request.call_args.args[0] == "PUT"
+    assert session.request.call_args.kwargs["json"] == payload

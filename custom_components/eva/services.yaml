@@ -1,0 +1,398 @@
+configure_gateway_updates:
+  name: Configure gateway automatic updates
+  description: Set automatic firmware update enablement and its hour together. The hour uses the Eva home’s
+    time zone.
+  fields:
+    config_entry_id: &id001
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    enabled:
+      name: Enabled
+      description: Allow automatic gateway firmware updates.
+      required: true
+      selector:
+        boolean: {}
+    hour_of_day:
+      name: Hour of day
+      description: Hour to start updates, from 0 to 23 in the Eva home’s time zone.
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 23
+          mode: box
+read_attribute:
+  name: Request device report
+  description: Request one fresh attribute report. Sleepy devices must be awake; repeated unanswered requests
+    can mark them offline.
+  fields:
+    config_entry_id: *id001
+    device_id:
+      name: Eva device ID
+      description: Use the API deviceId from an eva_event, not the Home Assistant device registry ID.
+      required: true
+      selector:
+        text: {}
+    attribute:
+      name: Attribute
+      description: A reported Eva attribute name, for example on, dimLevel or acPower.
+      required: true
+      selector:
+        text: {}
+calibrate_lock:
+  name: Calibrate Danalock
+  description: Start auto-calibration on a Danalock V3 lock. Follow the lock manufacturer’s physical installation
+    instructions first.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    device_id:
+      name: Eva device ID
+      description: Use the API deviceId from an eva_event, not the Home Assistant device registry ID.
+      required: true
+      selector:
+        text: {}
+get_groups:
+  name: Get top-level groups
+  description: Return top-level group IDs, names and member device IDs for this home.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+set_group_attribute:
+  name: Control top-level group
+  description: Set a shared attribute after validating every member. All members must be online and allow
+    manual control.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    group_id:
+      name: Group ID
+      description: Integer ID returned by Get top-level groups.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    attribute:
+      name: Attribute
+      description: A reported Eva attribute name, for example on, dimLevel or acPower.
+      required: true
+      selector:
+        text: {}
+    value:
+      name: Value
+      description: Use a YAML boolean, number or string matching the attribute type.
+      required: true
+      selector:
+        object: {}
+configure_energy_saver:
+  name: Configure device Energy Saver
+  description: Change charging or heating preferences, capacity management or an override. Uses existing
+    settings, or creates them for an eligible device.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    device_id:
+      name: Eva device ID
+      description: Use the API deviceId from an eva_event, not the Home Assistant device registry ID.
+      required: true
+      selector:
+        text: {}
+    settings:
+      name: Settings
+      description: Documented Energy Saver settings using API field names. See the integration action
+        guide for examples.
+      required: true
+      selector:
+        object: {}
+configure_home_energy_saver:
+  name: Configure home Energy Saver
+  description: Schedule away mode or change the home’s throttling strategy.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    settings:
+      name: Settings
+      description: Documented Energy Saver settings using API field names. See the integration action
+        guide for examples.
+      required: true
+      selector:
+        object: {}
+set_energy_saver_priority:
+  name: Set Energy Saver priority
+  description: Order devices from highest to lowest priority. Omitted devices become lowest priority;
+    an empty list clears the ordering.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    device_ids:
+      name: Device priority order
+      description: List Eva device IDs from highest to lowest priority. Each must already be configured
+        in Energy Saver.
+      required: true
+      selector:
+        object: {}
+get_energy_saver:
+  name: Get Energy Saver data
+  description: Return settings, summary, plan, event log, prices or throttle priority on demand.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    device_id:
+      name: Eva device ID
+      description: Use the API deviceId from an eva_event, not the Home Assistant device registry ID.
+      required: false
+      selector:
+        text: {}
+    kind:
+      name: Data to retrieve
+      description: Plans and prices require start and stop timestamps. Settings, summary, plan and device
+        eventlog require a device ID.
+      required: true
+      selector:
+        select:
+          options:
+          - settings
+          - summary
+          - plan
+          - eventlog
+          - prices
+          - priority
+          - home_eventlog
+    time_start:
+      name: Start time
+      description: ISO timestamp including timezone, for example 2026-10-09T00:00:00+02:00.
+      required: false
+      selector:
+        text: {}
+    time_stop:
+      name: End time
+      description: ISO timestamp including timezone, later than the start time.
+      required: false
+      selector:
+        text: {}
+    count:
+      name: Record count
+      description: Number of records to request.
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+      default: 20
+    start_time_key:
+      name: Next-page key
+      description: Copy nextPageStartTimeKey from the previous Energy Saver event-log response unchanged.
+      required: false
+      selector:
+        text: {}
+get_measurements:
+  name: Get historical measurements
+  description: Return recorded measurements for one reported device attribute, optionally aggregated.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    device_id:
+      name: Eva device ID
+      description: Use the API deviceId from an eva_event, not the Home Assistant device registry ID.
+      required: true
+      selector:
+        text: {}
+    time_start:
+      name: Start time
+      description: ISO timestamp including timezone, for example 2026-10-09T00:00:00+02:00.
+      required: true
+      selector:
+        text: {}
+    time_stop:
+      name: End time
+      description: ISO timestamp including timezone, later than the start time.
+      required: true
+      selector:
+        text: {}
+    time_zone:
+      name: Time zone
+      description: IANA time zone used to interpret local days and daylight saving time, for example Europe/Oslo.
+      required: true
+      selector:
+        text: {}
+    attribute:
+      name: Attribute
+      description: A reported Eva attribute name, for example on, dimLevel or acPower.
+      required: true
+      selector:
+        text: {}
+    aggregate:
+      name: Aggregate
+      description: Aggregate the returned measurements.
+      required: false
+      selector:
+        select:
+          options:
+          - min
+          - max
+          - count
+          - first
+          - last
+          - sum
+          - mean
+          - median
+    window_aggregate:
+      name: Window aggregate
+      description: Aggregate within each window.
+      required: false
+      selector:
+        select:
+          options:
+          - min
+          - max
+          - count
+          - first
+          - last
+          - sum
+          - mean
+          - median
+    window_duration:
+      name: Window duration
+      description: A positive duration such as 1h or 1d.
+      required: false
+      selector:
+        text: {}
+    window_time:
+      name: Window timestamp
+      description: Return the start or stop time of each window.
+      required: false
+      selector:
+        select:
+          options:
+          - start
+          - stop
+    transform:
+      name: Energy transform
+      description: Calculate consumption from a cumulative meter or estimate it from power readings.
+      required: false
+      selector:
+        select:
+          options:
+          - electricityConsumption
+          - electricityConsumptionEstimate
+get_charger_statistics:
+  name: Get charger statistics
+  description: Return hourly consumption for an external EV charger.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    device_id:
+      name: Eva device ID
+      description: Use the API deviceId from an eva_event, not the Home Assistant device registry ID.
+      required: true
+      selector:
+        text: {}
+    time_start:
+      name: Start time
+      description: ISO timestamp including timezone, for example 2026-10-09T00:00:00+02:00.
+      required: true
+      selector:
+        text: {}
+    time_stop:
+      name: End time
+      description: ISO timestamp including timezone, later than the start time.
+      required: true
+      selector:
+        text: {}
+    time_zone:
+      name: Time zone
+      description: IANA time zone used to interpret local days and daylight saving time, for example Europe/Oslo.
+      required: true
+      selector:
+        text: {}
+get_home_events:
+  name: Get home activity history
+  description: Return a page of home activity records. Records can contain private names and descriptions.
+  fields:
+    config_entry_id:
+      name: Eva home
+      description: Select the configured Eva home and environment.
+      required: true
+      selector:
+        config_entry:
+          integration: eva
+    device_id:
+      name: Eva device ID
+      description: Use the API deviceId from an eva_event, not the Home Assistant device registry ID.
+      required: false
+      selector:
+        text: {}
+    mood_id:
+      name: Mood ID
+      description: Optional Eva mood ID to filter the activity history.
+      required: false
+      selector:
+        text: {}
+    offset:
+      name: Page index
+      description: Zero for the first page, one for the second page; this is not a row offset.
+      required: false
+      selector:
+        number:
+          min: 0
+          mode: box
+      default: 0
+    count:
+      name: Record count
+      description: Number of records to request.
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+      default: 100

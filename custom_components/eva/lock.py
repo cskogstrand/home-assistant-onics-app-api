@@ -1,6 +1,8 @@
 """Door-lock state and lock/unlock commands."""
 
 from homeassistant.components.lock import LockEntity, LockEntityDescription
+from homeassistant.const import ATTR_CODE
+from homeassistant.exceptions import ServiceValidationError
 
 from .entity import EvaAttributeEntity, async_discover
 
@@ -26,6 +28,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class EvaLock(EvaAttributeEntity, LockEntity):
+    _attr_code_format = "^[0-9]*$"
+
     @property
     def is_locked(self):
         return self.boolean_value("locked")
@@ -38,4 +42,16 @@ class EvaLock(EvaAttributeEntity, LockEntity):
         await self.async_write("locked", True)
 
     async def async_unlock(self, **kwargs):
-        await self.async_write("locked", False)
+        code = kwargs.get(ATTR_CODE)
+        if code is None or code == "":
+            await self.async_write("locked", False)
+            return
+        if not isinstance(code, str) or not code.isascii() or not code.isdecimal():
+            raise ServiceValidationError("The lock PIN must contain only digits")
+        self.check_control_available()
+        self.validate_writes([("locked", False)])
+        await self.coordinator.async_command(
+            "PATCH",
+            ("devices", self._device_id),
+            {"attributes": [{"name": "locked", "value": False, "authPin": code}]},
+        )

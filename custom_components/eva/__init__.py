@@ -10,6 +10,7 @@ from .api import EvaClient
 from .const import CONF_ENVIRONMENT, DOMAIN, ENVIRONMENTS
 from .coordinator import EvaConfigEntry, EvaCoordinator
 from .credentials import async_get_credentials
+from .services import async_setup_services
 
 PLATFORMS = [
     Platform.ALARM_CONTROL_PANEL,
@@ -27,6 +28,12 @@ PLATFORMS = [
     Platform.TEXT,
     Platform.UPDATE,
 ]
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register home actions once; handlers resolve the currently loaded entry."""
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: EvaConfigEntry) -> bool:

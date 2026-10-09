@@ -80,6 +80,10 @@ class EvaAlarm(CoordinatorEntity, AlarmControlPanelEntity):
         value = self.coordinator.data.alarm.get("exit_at")
         return dt_util.parse_datetime(value) if isinstance(value, str) else None
 
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self._handle_coordinator_update()
+
     @callback
     def _handle_coordinator_update(self):
         if self._cancel_countdown:

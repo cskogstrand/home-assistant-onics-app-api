@@ -79,11 +79,23 @@ def event_data(event: dict) -> dict:
             "testModeUntil",
         }
         and (value is None or type(value) in (str, bool, int, float))
+        and (
+            key != "value"
+            or event.get("eventType")
+            in {
+                "deviceAttributeChanged",
+                "deviceAttributeReport",
+                "groupAttributeChanged",
+                "groupAttributeReport",
+            }
+        )
     }
     for key, fields in {
         "activeProfile": {"mode"},
         "softwareUpdate": {"status", "version", "progress"},
         "alert": {"id", "type", "active", "status"},
+        "automaticSoftwareUpdates": {"enabled", "hourOfDay"},
+        "homeEvent": {"id", "timestamp", "iconType"},
     }.items():
         value = event.get(key)
         if isinstance(value, dict):
@@ -95,6 +107,15 @@ def event_data(event: dict) -> dict:
             }
         elif key == "alert" and type(value) in (str, bool):
             data[key] = value
+    if event.get("eventType") == "cameraMotionDetected" and isinstance(
+        event.get("value"), dict
+    ):
+        data["value"] = {
+            key: value
+            for key, value in event["value"].items()
+            if key in {"deviceId", "kind", "state", "cameraEventType", "detectedAt"}
+            and isinstance(value, str)
+        }
     if isinstance(event.get("activeMoods"), list):
         data["activeMoods"] = [
             value for value in event["activeMoods"] if isinstance(value, str)

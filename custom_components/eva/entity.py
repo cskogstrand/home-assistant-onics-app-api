@@ -25,6 +25,39 @@ def translation_key(key: str) -> str:
 def device_data(coordinator: EvaCoordinator, device_id: str) -> dict:
     """External charger fields come from their documented status endpoint."""
     device = coordinator.data.devices.get(device_id, {})
+    if device.get("resource") == "gateway":
+        updates = device.get("automaticSoftwareUpdates")
+        updates = updates if isinstance(updates, dict) else {}
+        values = {
+            "gatewayOnline": coordinator.data.gateway_online,
+            "gatewayLastActivity": device.get("lastActivityAt"),
+            "gatewaySetupState": device.get("setupState"),
+        }
+        if (
+            type(updates.get("enabled")) is bool
+            and type(updates.get("hourOfDay")) is int
+            and 0 <= updates["hourOfDay"] <= 23
+        ):
+            values.update(
+                gatewayAutomaticUpdates=updates["enabled"],
+                gatewayUpdateHour=updates["hourOfDay"],
+            )
+        return {
+            **device,
+            "attributes": {key: {"value": value} for key, value in values.items()},
+        }
+    if type(device.get("energySaverEnabled")) is bool and (
+        device.get("eligibleForEnergySaver") is True
+        or device.get("energySaverEnabled") is True
+        or device.get("externalDeviceId")
+    ):
+        device = {
+            **device,
+            "attributes": {
+                **device.get("attributes", {}),
+                "energySaverEnabled": {"value": device["energySaverEnabled"]},
+            },
+        }
     if device.get("external") is True and device.get("type") == "evCharger":
         status = coordinator.external_status.get(device_id) or {}
         return {
@@ -58,6 +91,8 @@ def async_discover(
         entities = []
         for device_id in coordinator.data.devices:
             device = device_data(coordinator, device_id)
+            if not coordinator.data.device_enabled(device):
+                continue
             for entity in factory(coordinator, device_id, device):
                 if entity.unique_id not in known:
                     known[entity.unique_id] = device_id
@@ -121,6 +156,21 @@ class EvaEntity(CoordinatorEntity[EvaCoordinator]):
 
     @property
     def available(self) -> bool:
+        if not self.coordinator.data.device_enabled(self.device):
+            return False
+        if self.device.get("resource") == "gateway":
+            return super().available and (
+                self.entity_description.key
+                in {
+                    "gatewayOnline",
+                    "gatewayLastActivity",
+                    "gatewaySetupState",
+                    "gatewayAutomaticUpdates",
+                    "gatewayUpdateHour",
+                    "ping",
+                }
+                or self.coordinator.data.gateway_online
+            )
         if (
             self.device.get("external") is True
             and self.device.get("type") == "evCharger"
