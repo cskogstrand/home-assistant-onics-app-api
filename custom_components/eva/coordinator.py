@@ -12,6 +12,7 @@ from homeassistant.exceptions import (
     ConfigEntryError,
     HomeAssistantError,
 )
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -242,7 +243,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                                 "groupDeleted",
                                 "homeDeleted",
                             }:
-                                self._async_remove_deleted_devices(state)
+                                self._async_sync_devices(state)
                             if state != self.data or not self.last_update_success:
                                 self.async_set_updated_data(state)
                             for listener in tuple(self._command_listeners):
@@ -306,7 +307,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             await asyncio.sleep(delay)
             backoff = min(max(backoff * 2, delay), 60.0)
 
-    def _async_remove_deleted_devices(self, state: HomeState) -> None:
+    def _async_sync_devices(self, state: HomeState) -> None:
         """Reconcile this entry's registry only after an authoritative update."""
         self.external_status = {
             key: value
@@ -318,13 +319,14 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             for device_id in state.devices
         }
         registry = dr.async_get(self.hass)
+        areas = ar.async_get(self.hass)
         for device in dr.async_entries_for_config_entry(
             registry, self.config_entry.entry_id
         ):
             if not identifiers.intersection(device.identifiers):
                 registry.async_remove_device(device.id)
         for device_id, device in state.devices.items():
-            registry.async_get_or_create(
+            registered = registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
                 identifiers={(DOMAIN, f"{self.config_entry.unique_id}:{device_id}")},
                 name=device.get("name"),
@@ -334,6 +336,10 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                 hw_version=device.get("hardwareVersion"),
                 suggested_area=device.get("room_name"),
             )
+            if room_name := device.get("room_name"):
+                area = areas.async_get_or_create(room_name)
+                # Suggested areas only apply until HA has assigned an area.
+                registry.async_update_device(registered.id, area_id=area.id)
 
     async def async_shutdown(self) -> None:
         """Cancel and await the stream, closing its HTTP response on every exit."""

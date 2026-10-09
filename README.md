@@ -103,6 +103,10 @@ Do not use a production configuration directory here.
   devices and groups are removed with their entities, including after a restart.
   Offline devices stay registered with unavailable entities. Null and invalid
   values remain unknown.
+- Device and group areas follow Eva room assignments, including room changes
+  after pairing and while Home Assistant is offline. Matching areas are reused
+  or created as needed. Eva room assignments take precedence over manual device
+  area changes in Home Assistant.
 - Commands validate types, ranges, steps and options before sending. Eva's SSE
   action result confirms completion; failed actions and timeouts raise Home
   Assistant errors. Writes are never retried and state is never optimistic.

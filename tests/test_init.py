@@ -8,6 +8,7 @@ import aiohttp
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -365,6 +366,77 @@ async def test_deleted_devices_removed_offline_retained_and_readded(
         await hass.async_block_till_done()
         assert hass.states.get(entity_id).state == "21.5"
         assert len(er.async_entries_for_config_entry(entities, entry.entry_id)) == 2
+        assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize("update", ["deviceUpdated", "roomSaved", "reload"])
+@pytest.mark.parametrize("existing_area", [False, True])
+async def test_device_area_follows_eva_room_after_pairing(
+    hass, snapshot, update, existing_area
+):
+    queue = asyncio.Queue()
+    added = deepcopy(snapshot)
+    added["eventType"] = "deviceAdded"
+    added["home"]["rooms"][0]["name"] = "ukjent rom"
+    initial = deepcopy(added)
+    initial["eventType"] = "initialHome"
+    initial["home"]["rooms"][0]["devices"] = []
+
+    async def stream(*args):
+        yield initial
+        while True:
+            yield await queue.get()
+
+    entry = make_entry(hass)
+    areas = ar.async_get(hass)
+    if existing_area:
+        areas.async_create("Living room")
+    with patch("custom_components.eva.api.EvaClient.async_events", new=stream):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        queue.put_nowait(added)
+        await hass.async_block_till_done()
+        entities = er.async_get(hass)
+        devices = dr.async_get(hass)
+        unique_id = "test:test-home:test-device:temperature"
+        entity_id = entities.async_get_entity_id("sensor", DOMAIN, unique_id)
+        device_id = entities.async_get(entity_id).device_id
+        assert (
+            devices.async_get(device_id).area_id
+            == areas.async_get_area_by_name("ukjent rom").id
+        )
+
+        assigned = deepcopy(added)
+        assigned["home"]["rooms"][0]["devices"] = []
+        assigned["home"]["rooms"].append(
+            {
+                "id": "living-room",
+                "name": "Living room",
+                "devices": deepcopy(added["home"]["rooms"][0]["devices"]),
+            }
+        )
+        if update == "reload":
+            assert await hass.config_entries.async_unload(entry.entry_id)
+            initial = assigned
+            initial["eventType"] = "initialHome"
+            assert await hass.config_entries.async_setup(entry.entry_id)
+        else:
+            assigned["eventType"] = update
+            queue.put_nowait(assigned)
+        await hass.async_block_till_done()
+        area = areas.async_get_area_by_name("Living room")
+        assert area is not None
+        assert devices.async_get(device_id).area_id == area.id
+
+        # Replayed snapshots must keep the existing device and entity identities.
+        queue.put_nowait(deepcopy(assigned))
+        await hass.async_block_till_done()
+        assert devices.async_get(device_id).area_id == area.id
+        assert entities.async_get_entity_id("sensor", DOMAIN, unique_id) == entity_id
+        assert entities.async_get(entity_id).device_id == device_id
+        assert hass.states.get(entity_id).state == "21.5"
+        assert len(dr.async_entries_for_config_entry(devices, entry.entry_id)) == 1
+        assert len(er.async_entries_for_config_entry(entities, entry.entry_id)) == 1
         assert await hass.config_entries.async_unload(entry.entry_id)
 
 
