@@ -121,8 +121,14 @@ Do not use a production configuration directory here.
 
 ### Live SSE events
 
-All 117 `SSE:` event types in the [App API event table](https://onicsas.github.io/home-hla-docs/#events-event-types)
-are handled. The 65 types documented as containing a complete home replace the
+All 117 `SSE:` event types in the [main App API event table](https://onicsas.github.io/home-hla-docs/#events-event-types)
+are covered by the event tests. This is not full API coverage: the documentation
+also lists home-log and upcoming camera events, and several API operations are
+not exposed. See the [API functionality review](docs/API_REVIEW.md) for confirmed
+gaps and the [automation event guide](docs/AUTOMATIONS.md) for event causes,
+payload fields, exclusions, replay behavior and copyable trigger examples.
+
+The 65 main event types documented as containing a complete home replace the
 local snapshot, including device/room/group/mood changes, firmware completion,
 settings, users and services. Any future event containing a home does the same.
 The API itself supplies those snapshots; the integration does not poll for them.
@@ -133,16 +139,20 @@ Failed pairing removes the failed device. Scenes expose an `active` attribute
 updated by `moodActivated` and `activeMoodsChanged`. Attribute-sent notifications
 do not change reported values or complete pending commands.
 
-Every business event also fires `eva_event` on Home Assistant's event bus, even
-when no entity state changes. This makes gateway updates, alerts, warnings, scan
-progress, electricity limits, access changes, Energy Saver and ARC notifications
+After a valid home snapshot arrives on each connection, every successfully
+processed business event also fires `eva_event` on Home Assistant's event bus,
+even when no entity state changes. This makes gateway updates, alerts, warnings,
+scan progress, electricity limits, access changes, Energy Saver and ARC notifications
 available to automations. Stream housekeeping events are excluded. Events include
 `config_entry_id`, `home_id`, the API's `eventType`, and supplied event/resource IDs.
 Operational data includes scalar `name`/`value`, progress, software update status,
 alarm mode/countdowns and active mood IDs. Alert objects expose only scalar
 `id`, `type`, `active` and `status` fields; warnings expose only `id`, `type`,
 `severity`, `alarm` and `dismissible`. Full homes, user details, PINs, RFID tags,
-access labels, free-form warnings and unknown fields are excluded.
+access labels, free-form warnings and unknown fields are excluded. Scalar `value`
+is allowed for any event type; the upcoming camera provisioning QR string is
+therefore not redacted. See the [review finding](docs/API_REVIEW.md#confirmed-issues)
+before using camera provisioning on an environment that supports it.
 
 For notifications without a documented state payload (such as `arcUpdated` and
 `energySaverDeviceStatusUpdated`), the event is the automation signal; no device
@@ -191,9 +201,12 @@ sensors until that metadata arrives. Unknown scalar attributes also remain
 read-only; structured unknown values stay unknown rather than being serialized
 into entity states. Long text sensor states are limited to HA's 255 characters.
 
-The published App API has no control contract for cameras, media players,
-vacuums, siren activation, cover stop, or generic physical-button press events. Those require an upstream API contract before native controls can
-be added. Alarm entities report the documented active profile and countdowns;
+The published App API has an [upcoming camera contract](https://onicsas.github.io/home-hla-docs/#cameras),
+marked as not yet in production and limited to Squid gateways. Native camera
+controls and streams are not implemented here. The reviewed documentation does
+not establish native controls for media players, vacuums, siren activation,
+cover stop, or a generic physical-button press event contract.
+Alarm entities report the documented active profile and countdowns;
 no triggered-alarm state is inferred from undocumented alert payloads. Some
 voltage/current and min/max readings only update when Eva receives a report;
 the integration does not repeatedly wake battery devices to force measurements.
