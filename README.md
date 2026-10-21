@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="custom_components/eva/brand/dark_logo.png">
-  <img src="custom_components/eva/brand/logo.png" alt="Eva" width="154" height="46">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cskogstrand/home-assistant-onics-app-api/main/custom_components/eva/brand/dark_logo.png">
+  <img src="https://raw.githubusercontent.com/cskogstrand/home-assistant-onics-app-api/main/custom_components/eva/brand/logo.png" alt="Eva" width="154" height="46">
 </picture>
 
 # Eva for Home Assistant
@@ -55,7 +55,11 @@ Eva before adding the integration.
 
 ### Install with HACS
 
+[![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=cskogstrand&repository=home-assistant-onics-app-api&category=integration)
+
 Eva is available as a [HACS custom repository](https://www.hacs.xyz/docs/faq/custom_repositories/).
+HACS downloads require a published release. Before the first release, use the
+manual source installation below.
 
 1. In HACS, open the menu in the top right and choose **Custom repositories**.
 2. Add `https://github.com/cskogstrand/home-assistant-onics-app-api` with type **Integration**.
@@ -77,6 +81,11 @@ Install new versions through HACS, or replace the files in `custom_components/ev
 with the contents of the new release archive. Restart Home Assistant after updating.
 See the [release notes](https://github.com/cskogstrand/home-assistant-onics-app-api/releases)
 for changes and any upgrade instructions.
+
+If HACS still shows an older commit or README, open Eva and select **⋮ → Update
+information**, then update or **Redownload** and select the release version.
+Restart Home Assistant after installation. HACS shows the README for the installed
+revision; tags and draft releases alone do not appear as release choices.
 
 ### Connect your home
 
@@ -109,6 +118,19 @@ be added once per environment.
 - **Experimental use:** continuous background connections are outside the App API's
   stated intended use. See the [coverage and limitations review](docs/API_REVIEW.md)
   before relying on the integration.
+
+## Branding
+
+Eva includes its icons and light/dark logos in `custom_components/eva/brand/`.
+Home Assistant uses these local images under **Settings → Devices & services**
+after installation and restart. Refresh your browser or companion app if it still
+shows a cached placeholder.
+
+The HACS repository-list icon is separate: HACS 2.0.5 still uses the old remote
+brand catalog and can show a placeholder even when the installed icon works.
+This is a [known HACS issue](https://github.com/hacs/integration/issues/5179#issuecomment-6222990038).
+Maintainers report it fixed in the Marketplace integration planned for Home
+Assistant 2026.11. Another Eva release or redownload does not fix the HACS icon.
 
 ## Documentation
 

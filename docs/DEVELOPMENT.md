@@ -52,6 +52,14 @@ HACS metadata and the standard component layout are included.
 Runtime configuration, `.env` files, logs, caches, and virtual environments are
 ignored; only the sanitized `config/configuration.yaml` is tracked.
 
+### IntelliJ manifest warnings
+
+If IntelliJ reports that `issue_tracker` or `version` is not allowed in
+`custom_components/eva/manifest.json`, it has selected a schema for built-in Home
+Assistant integrations. Both fields are required for this HACS custom integration.
+Choose a custom-integration schema, or use **Ignore JSON schema for this file**
+from the editor's JSON Schema selector. Keep the fields; CI validates the manifest.
+
 ## Releases
 
 The version in `custom_components/eva/manifest.json` is the source of truth.

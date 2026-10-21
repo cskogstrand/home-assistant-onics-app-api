@@ -2,5 +2,8 @@
   "name": "Eva",
   "homeassistant": "2026.9.4",
   "zip_release": true,
-  "filename": "eva.zip"
+  "filename": "eva.zip",
+  "hide_default_branch": true,
+  "hacs": "2.0.5",
+  "render_readme": true
 }
