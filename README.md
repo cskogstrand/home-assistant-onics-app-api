@@ -1,3 +1,5 @@
+![Eva](https://raw.githubusercontent.com/cskogstrand/home-assistant-onics-app-api/main/custom_components/eva/brand/logo.svg)
+
 # Eva for Home Assistant
 
 [![Version](https://img.shields.io/github/manifest-json/v/cskogstrand/home-assistant-onics-app-api?filename=custom_components%2Feva%2Fmanifest.json&label=version)](https://github.com/cskogstrand/home-assistant-onics-app-api/releases)
