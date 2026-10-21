@@ -63,32 +63,35 @@ from the editor's JSON Schema selector. Keep the fields; CI validates the manife
 ## Releases
 
 The version in `custom_components/eva/manifest.json` is the source of truth.
-Use `MAJOR.MINOR.PATCH` (for example, `0.1.2`), or append `a1`, `b1` or `rc1`
-for a prerelease (for example, `0.2.0b1`). Release tags must match exactly,
-with a leading `v`.
+Use `MAJOR.MINOR.PATCH`, or append `a1`, `b1` or `rc1` for a prerelease (for example,
+`0.2.0b1`). **Pushing or merging a version increase to `main` requests automatic
+publication.** Choose patch for fixes, minor for features, and major for breaking
+changes. Prereleases remain marked as prereleases and do not replace the latest
+stable release.
 
-1. Update the manifest version, run the checks above, and commit the release changes
-   to `main`. Wait for its **Validate** and **Lint and test** workflows to pass.
-2. Tag that commit and push the tag. For a manifest version of `0.1.2`:
+1. Increase the manifest version, for example from `0.1.2` to `0.1.3`, run the checks
+   above, and commit the changes. Push or merge that commit into `main`.
+2. The **Release** workflow compares the manifest before and after the whole push.
+   An unchanged version skips release jobs; malformed versions and decreases fail
+   without publishing. Prereleases progress in alpha, beta, release-candidate,
+   then stable order.
+3. Hassfest, HACS validation, linting and tests run against that exact commit.
+   When all pass, the workflow builds and verifies `eva.zip`, creates the matching
+   tag (for example, `v0.1.3`), and publishes the release with generated notes.
+   The release stays a draft during upload so HACS receives a complete ZIP.
 
-   ```sh
-   git tag -a v0.1.2 -m "Eva 0.1.2"
-   git push origin v0.1.2
-   ```
-
-3. The **Release** workflow runs the same validation, linting and tests on the
-   tagged commit. It rejects a tag that differs from the manifest version, builds
-   `eva.zip`, and creates a **draft** GitHub release with generated release notes.
-   Alpha, beta and release-candidate versions are marked as prereleases.
-4. Open the draft on the repository's **Releases** page, review the notes and
-   attached `eva.zip`, then publish it. HACS sees published releases; tags and
-   drafts alone do not make a version available.
+Ordinary pushes continue to run CI. Other branches and manually pushed tags do
+not publish releases. No local deploy script, separate release branch, or personal
+access token is needed. Only the release job receives `contents: write` for its
+`GITHUB_TOKEN`; the workflow never edits or commits the manifest for you.
 
 The archive contains the committed integration files at its root, including
 translations and branding, plus the MIT license. Local caches and untracked
 files are excluded. Its fixed filename matches `hacs.json`; the tag, release
-title and packaged manifest carry the version. No personal access token is
-needed: only the release job receives `contents: write` for its `GITHUB_TOKEN`.
+title and packaged manifest carry the version.
 
-If validation or packaging fails, no draft is created. Fix the problem and use
-a new version and tag. Do not replace published tags or release assets.
+If checks fail, fix the problem and increase the version again, or rerun the
+original workflow for a transient failure. An existing tag is never overwritten:
+if a run stops after tag creation or draft upload, inspect that tag and draft
+before completing publication manually or choosing a new version. Published
+tags and assets must not be replaced.

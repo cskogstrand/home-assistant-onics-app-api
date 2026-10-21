@@ -2,8 +2,9 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    paths:
+      - custom_components/eva/manifest.json
 
 permissions:
   contents: read
@@ -13,20 +14,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  version:
+    name: Detect version bump
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: version
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: python3 scripts/release_version.py custom_components/eva/manifest.json
+
   validate:
+    needs: version
+    if: needs.version.outputs.tag != ''
     uses: ./.github/workflows/validate.yml
 
   lint:
+    needs: version
+    if: needs.version.outputs.tag != ''
     uses: ./.github/workflows/lint.yml
 
   release:
-    name: Build draft release
-    needs: [validate, lint]
+    name: Build and publish release
+    needs: [version, validate, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout the tagged commit
+      - name: Checkout the release commit
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
@@ -34,7 +54,7 @@ jobs:
       - name: Build and verify the HACS archive
         id: package
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
         run: |
           git archive --format=zip --output="$RUNNER_TEMP/eva.zip" --add-file=LICENSE HEAD:custom_components/eva
           python3 - <<'PY'
@@ -62,13 +82,17 @@ jobs:
               output.write(f"prerelease={str(prerelease).lower()}\n")
           PY
 
-      - name: Create draft release with generated notes
+      - name: Tag and publish release
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
           PRERELEASE: ${{ steps.package.outputs.prerelease }}
         run: |
+          gh api --method POST "repos/$GH_REPO/git/refs" --silent \
+            -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA"
           gh release create "$RELEASE_TAG" "$RUNNER_TEMP/eva.zip" \
-            --verify-tag --draft --generate-notes \
+            --verify-tag --target "$GITHUB_SHA" --draft --generate-notes \
             --title "Eva ${RELEASE_TAG#v}" --prerelease="$PRERELEASE"
+          gh release edit "$RELEASE_TAG" --draft=false
