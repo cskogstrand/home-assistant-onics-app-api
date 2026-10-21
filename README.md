@@ -5,6 +5,14 @@
 
 # Eva for Home Assistant
 
+[![Version](https://img.shields.io/github/manifest-json/v/cskogstrand/home-assistant-onics-app-api?filename=custom_components%2Feva%2Fmanifest.json&label=version)](https://github.com/cskogstrand/home-assistant-onics-app-api/releases)
+[![Downloads](https://img.shields.io/github/downloads/cskogstrand/home-assistant-onics-app-api/total)](https://github.com/cskogstrand/home-assistant-onics-app-api/releases)
+[![HACS custom repository](https://img.shields.io/badge/HACS-Custom-41BDF5)](#install-with-hacs)
+[![Minimum Home Assistant version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcskogstrand%2Fhome-assistant-onics-app-api%2Fmain%2Fhacs.json&query=%24.homeassistant&label=Home%20Assistant&suffix=%2B&color=41BDF5)](#get-started)
+[![Validation](https://github.com/cskogstrand/home-assistant-onics-app-api/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/cskogstrand/home-assistant-onics-app-api/actions/workflows/validate.yml)
+[![Lint and tests](https://github.com/cskogstrand/home-assistant-onics-app-api/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/cskogstrand/home-assistant-onics-app-api/actions/workflows/lint.yml)
+[![License](https://img.shields.io/github/license/cskogstrand/home-assistant-onics-app-api)](LICENSE)
+
 Bring your Eva smart home into Home Assistant. Control supported devices, follow
 live updates, and build automations with native Home Assistant entities.
 
@@ -45,12 +53,30 @@ You will need **Home Assistant 2026.9.4 or newer**, an Eva account with access t
 an existing home, and an internet connection. Pair and configure your devices in
 Eva before adding the integration.
 
-### Install
+### Install with HACS
 
-1. Copy this repository's `custom_components/eva` folder into the
-   `custom_components` directory inside your Home Assistant configuration folder.
-   Create that directory if it does not exist.
+Eva is available as a [HACS custom repository](https://www.hacs.xyz/docs/faq/custom_repositories/).
+
+1. In HACS, open the menu in the top right and choose **Custom repositories**.
+2. Add `https://github.com/cskogstrand/home-assistant-onics-app-api` with type **Integration**.
+3. Find **Eva**, download it, and restart Home Assistant.
+
+### Install manually
+
+1. Download `eva.zip` from the [latest release](https://github.com/cskogstrand/home-assistant-onics-app-api/releases/latest)
+   and extract its contents into `custom_components/eva` inside your Home Assistant
+   configuration folder. Create that directory if it does not exist.
 2. Restart Home Assistant.
+
+Before the first release, copy this repository's `custom_components/eva` folder
+into your Home Assistant `custom_components` directory instead.
+
+### Updates
+
+Install new versions through HACS, or replace the files in `custom_components/eva`
+with the contents of the new release archive. Restart Home Assistant after updating.
+See the [release notes](https://github.com/cskogstrand/home-assistant-onics-app-api/releases)
+for changes and any upgrade instructions.
 
 ### Connect your home
 
@@ -91,7 +117,7 @@ be added once per environment.
 | [Controls and actions](docs/ACTIONS.md) | Advanced device controls, Energy Saver settings and on-demand data |
 | [Automation events](docs/AUTOMATIONS.md) | Event triggers, payloads and ready-to-use YAML examples |
 | [Coverage and limitations](docs/API_REVIEW.md) | Implemented API features and known gaps |
-| [Development](docs/DEVELOPMENT.md) | Local Home Assistant setup, linting and tests |
+| [Development](docs/DEVELOPMENT.md) | Local Home Assistant setup, linting, tests and releases |
 
 Found a problem or have an idea? [Report an issue or request a feature](https://github.com/cskogstrand/home-assistant-onics-app-api/issues).
 

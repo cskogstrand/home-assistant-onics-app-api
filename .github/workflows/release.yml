@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
+
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  release:
+    name: Build draft release
+    needs: [validate, lint]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the tagged commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Build and verify the HACS archive
+        id: package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          git archive --format=zip --output="$RUNNER_TEMP/eva.zip" --add-file=LICENSE HEAD:custom_components/eva
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          with ZipFile(Path(os.environ["RUNNER_TEMP"]) / "eva.zip") as archive:
+              manifest = json.loads(archive.read("manifest.json"))
+              version = manifest["version"]
+              if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:(a|b|rc)[0-9]+)?", version):
+                  raise SystemExit(f"Unsupported manifest version: {version}")
+              if os.environ["RELEASE_TAG"] != f"v{version}":
+                  raise SystemExit(f"Release tag must match manifest version: v{version}")
+              assert archive.testzip() is None, "Corrupt release archive"
+              assert manifest["domain"] == "eva", "Wrong integration domain"
+              for required in ("__init__.py", "strings.json", "translations/en.json", "services.yaml", "brand/icon.png", "LICENSE"):
+                  assert required in archive.namelist(), f"Missing {required}"
+              assert not any(name.startswith("custom_components/") for name in archive.namelist()), "Archive must contain the integration files at its root"
+
+          prerelease = bool(re.search(r"(a|b|rc)[0-9]+$", version))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"prerelease={str(prerelease).lower()}\n")
+          PY
+
+      - name: Create draft release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ steps.package.outputs.prerelease }}
+        run: |
+          gh release create "$RELEASE_TAG" "$RUNNER_TEMP/eva.zip" \
+            --verify-tag --draft --generate-notes \
+            --title "Eva ${RELEASE_TAG#v}" --prerelease="$PRERELEASE"

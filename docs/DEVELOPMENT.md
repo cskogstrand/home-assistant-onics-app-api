@@ -51,3 +51,36 @@ Hassfest, HACS validation, linting and tests are retained in GitHub workflows.
 HACS metadata and the standard component layout are included.
 Runtime configuration, `.env` files, logs, caches, and virtual environments are
 ignored; only the sanitized `config/configuration.yaml` is tracked.
+
+## Releases
+
+The version in `custom_components/eva/manifest.json` is the source of truth.
+Use `MAJOR.MINOR.PATCH` (for example, `0.1.2`), or append `a1`, `b1` or `rc1`
+for a prerelease (for example, `0.2.0b1`). Release tags must match exactly,
+with a leading `v`.
+
+1. Update the manifest version, run the checks above, and commit the release changes
+   to `main`. Wait for its **Validate** and **Lint and test** workflows to pass.
+2. Tag that commit and push the tag. For a manifest version of `0.1.2`:
+
+   ```sh
+   git tag -a v0.1.2 -m "Eva 0.1.2"
+   git push origin v0.1.2
+   ```
+
+3. The **Release** workflow runs the same validation, linting and tests on the
+   tagged commit. It rejects a tag that differs from the manifest version, builds
+   `eva.zip`, and creates a **draft** GitHub release with generated release notes.
+   Alpha, beta and release-candidate versions are marked as prereleases.
+4. Open the draft on the repository's **Releases** page, review the notes and
+   attached `eva.zip`, then publish it. HACS sees published releases; tags and
+   drafts alone do not make a version available.
+
+The archive contains the committed integration files at its root, including
+translations and branding, plus the MIT license. Local caches and untracked
+files are excluded. Its fixed filename matches `hacs.json`; the tag, release
+title and packaged manifest carry the version. No personal access token is
+needed: only the release job receives `contents: write` for its `GITHUB_TOKEN`.
+
+If validation or packaging fails, no draft is created. Fix the problem and use
+a new version and tag. Do not replace published tags or release assets.

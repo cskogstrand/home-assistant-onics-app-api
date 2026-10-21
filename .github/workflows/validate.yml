@@ -1,6 +1,7 @@
 name: Validate
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches:
@@ -9,7 +10,8 @@ on:
     branches:
       - main
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   hassfest: # https://developers.home-assistant.io/blog/2020/04/16/hassfest
@@ -32,3 +34,4 @@ jobs:
         uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
         with:
           category: integration
+          comment: false
