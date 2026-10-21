@@ -60,6 +60,24 @@ Assistant integrations. Both fields are required for this HACS custom integratio
 Choose a custom-integration schema, or use **Ignore JSON schema for this file**
 from the editor's JSON Schema selector. Keep the fields; CI validates the manifest.
 
+## Deploying from main
+
+After `./scripts/setup`, commit your code and changelog changes, then run
+`./deploy.sh` from a clean `main` checkout. The script operates only on this
+repository and patch-bumps `custom_components/eva/manifest.json` without reformatting it. It fetches
+`origin/main` and refuses behind or diverged branches. Committed local changes
+ahead of `origin/main` are included in the push.
+
+It runs `./scripts/lint`, `./scripts/test` and `docker compose config --quiet` before committing only the manifest and pushing `main`.
+**If any check fails, the original version is restored and nothing is committed
+or pushed.** Concurrent edits are preserved. If a commit or push fails after
+testing, inspect the local release commit and finish the push manually; do not
+run the script again and bump twice. It never force-pushes or resets your work.
+
+Automatic patch bumps require stable `MAJOR.MINOR.PATCH` versions. Use the manual
+release process for minor, major or prerelease changes. GitHub's release workflow
+still performs Hassfest and HACS validation before publishing.
+
 ## Releases
 
 The version in `custom_components/eva/manifest.json` is the source of truth.
@@ -81,8 +99,8 @@ stable release.
    The release stays a draft during upload so HACS receives a complete ZIP.
 
 Ordinary pushes continue to run CI. Other branches and manually pushed tags do
-not publish releases. No local deploy script, separate release branch, or personal
-access token is needed. Only the release job receives `contents: write` for its
+not publish releases. A separate release branch or personal access token is not
+needed; `./deploy.sh` automates the local patch-release steps. Only the release job receives `contents: write` for its
 `GITHUB_TOKEN`; the workflow never edits or commits the manifest for you.
 
 The archive contains the committed integration files at its root, including
