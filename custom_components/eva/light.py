@@ -133,7 +133,17 @@ class EvaLight(EvaEntity, LightEntity):
         if "color_temp_kelvin" in kwargs:
             if ColorMode.COLOR_TEMP not in self.supported_color_modes:
                 raise ServiceValidationError("Color temperature control is unavailable")
-            writes.append(("colorTemperature", round(kwargs["color_temp_kelvin"])))
+            kelvin = round(kwargs["color_temp_kelvin"])
+            options = self.attributes["colorTemperature"].get("options")
+            # HA's continuous slider must map to the bulb's fixed Kelvin options.
+            if (
+                isinstance(options, list)
+                and options
+                and all(type(option) is int and option > 0 for option in options)
+                and self.min_color_temp_kelvin <= kelvin <= self.max_color_temp_kelvin
+            ):
+                kelvin = min(options, key=lambda option: abs(option - kelvin))
+            writes.append(("colorTemperature", kelvin))
         if "hs_color" in kwargs:
             hue, saturation = kwargs["hs_color"]
             writes.extend(

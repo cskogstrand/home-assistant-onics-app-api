@@ -258,6 +258,13 @@ async def test_native_platforms_commands_updates_and_cleanup(
             ),
             (
                 "light",
+                "turn_on",
+                "lamp:light",
+                {"color_temp_kelvin": 3200},
+                ("devices", "lamp", "attributes", "colorTemperature", "3200"),
+            ),
+            (
+                "light",
                 "turn_off",
                 "lamp:light",
                 {},
@@ -503,6 +510,62 @@ async def test_native_platforms_commands_updates_and_cleanup(
         coordinator = entry.runtime_data
         assert await hass.config_entries.async_unload(entry.entry_id)
         assert not coordinator._command_listeners
+
+
+@pytest.mark.parametrize("resource", ["devices", "groups"])
+@pytest.mark.parametrize(
+    "metadata,requested,expected",
+    [
+        ({"options": [2200, 2700, 3000, 3500, 4000, 6500]}, 3200, 3000),
+        ({"options": [2200, 2700, 3000, 3500, 4000, 6500]}, 3400, 3500),
+        ({"options": [2200, 2700, 3000, 3500, 4000, 6500]}, 4000, 4000),
+        ({}, 3200, 3200),
+        ({"options": []}, 3200, 3200),
+        ({"options": [2700, 4000]}, 7000, None),
+        ({"options": [2700, 4000]}, 1000, None),
+        ({"options": ["2700", "4000"]}, 3200, None),
+        ({"options": [2700, None, 4000]}, 3200, None),
+    ],
+)
+async def test_light_color_temperature_options(
+    hass, snapshot, resource, metadata, requested, expected
+):
+    from unittest.mock import AsyncMock
+
+    from homeassistant.components.light import LightEntityDescription
+
+    from custom_components.eva.light import EvaLight
+    from tests.test_coordinator import make_coordinator
+
+    identifier = 1 if resource == "groups" else "lamp"
+    lamp = device(identifier, {"on": True, "colorTemperature": 2700, "dimLevel": 50})
+    lamp["attributes"][1].update(metadata)
+    snapshot["home"]["rooms"][0][resource] = [lamp]
+    coordinator = make_coordinator(hass, None)
+    coordinator.data = coordinator.data.apply(snapshot)
+    coordinator.last_update_success = True
+    coordinator.client.async_command = AsyncMock(return_value=None)
+    light = EvaLight(
+        coordinator,
+        "group:1" if resource == "groups" else "lamp",
+        LightEntityDescription(key="light"),
+    )
+
+    if expected is None:
+        with pytest.raises(ServiceValidationError):
+            await light.async_turn_on(brightness=128, color_temp_kelvin=requested)
+        coordinator.client.async_command.assert_not_awaited()
+        return
+
+    await light.async_turn_on(color_temp_kelvin=requested)
+
+    coordinator.client.async_command.assert_awaited_once_with(
+        "test-home",
+        "POST" if resource == "groups" else "PATCH",
+        (resource, str(identifier), "attributes", "colorTemperature", str(expected)),
+        None,
+    )
+    assert light.color_temp_kelvin == 2700  # State waits for a device report.
 
 
 @pytest.mark.parametrize(
