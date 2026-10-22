@@ -62,17 +62,29 @@ from the editor's JSON Schema selector. Keep the fields; CI validates the manife
 
 ## Deploying from main
 
-After `./scripts/setup`, commit your code and changelog changes, then run
+After `./scripts/setup`, commit your code changes, then run
 `./deploy.sh` from a clean `main` checkout. The script operates only on this
 repository and patch-bumps `custom_components/eva/manifest.json` without reformatting it. It fetches
 `origin/main` and refuses behind or diverged branches. Committed local changes
 ahead of `origin/main` are included in the push.
 
-It runs `./scripts/lint`, `./scripts/test` and `docker compose config --quiet` before committing only the manifest and pushing `main`.
-**If any check fails, the original version is restored and nothing is committed
-or pushed.** Concurrent edits are preserved. If a commit or push fails after
+It runs `./scripts/lint`, `./scripts/test` and `docker compose config --quiet` before committing the manifest and `CHANGELOG.md` together and pushing `main`.
+**If any check fails, the original version and changelog are restored and nothing
+is committed or pushed.** Concurrent edits are preserved. If a commit or push fails after
 testing, inspect the local release commit and finish the push manually; do not
 run the script again and bump twice. It never force-pushes or resets your work.
+
+The changelog lists commit subjects since the previous recorded release, excluding
+merge commits and automated version-bump commits. Historical entries are kept,
+and a hidden `release-source` marker records each boundary; preserve these markers
+when editing notes. Missing or invalid markers and duplicate version entries stop
+the deployment before tests or a push. The current published release is included
+as the initial changelog boundary.
+
+GitHub publishes the matching version entry as release notes after CI passes.
+Manual version bumps without an entry retain GitHub's generated-notes fallback;
+when releasing manually, add a `## VERSION` section with a `release-source` marker
+for the source commit so the next `./deploy.sh` can continue from it.
 
 Automatic patch bumps require stable `MAJOR.MINOR.PATCH` versions. Use the manual
 release process for minor, major or prerelease changes. GitHub's release workflow
@@ -95,7 +107,8 @@ stable release.
    then stable order.
 3. Hassfest, HACS validation, linting and tests run against that exact commit.
    When all pass, the workflow builds and verifies `eva.zip`, creates the matching
-   tag (for example, `v0.1.3`), and publishes the release with generated notes.
+   tag (for example, `v0.1.3`), and publishes the release with the matching changelog entry (or GitHub-generated
+   notes if no entry exists).
    The release stays a draft during upload so HACS receives a complete ZIP.
 
 Ordinary pushes continue to run CI. Other branches and manually pushed tags do

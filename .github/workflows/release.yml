@@ -90,9 +90,18 @@ jobs:
           RELEASE_TAG: ${{ needs.version.outputs.tag }}
           PRERELEASE: ${{ steps.package.outputs.prerelease }}
         run: |
+          notes=(--generate-notes)
+          if [[ -f CHANGELOG.md ]] && awk -v heading="## ${RELEASE_TAG#v}" '
+            $0 == heading { found = 1; next }
+            found && /^## / { exit }
+            found && !/^<!-- release-source:/ { print }
+            END { if (!found) exit 1 }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"; then
+            notes=(--notes-file "$RUNNER_TEMP/release-notes.md")
+          fi
           gh api --method POST "repos/$GH_REPO/git/refs" --silent \
             -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA"
           gh release create "$RELEASE_TAG" "$RUNNER_TEMP/eva.zip" \
-            --verify-tag --target "$GITHUB_SHA" --draft --generate-notes \
+            --verify-tag --target "$GITHUB_SHA" --draft "${notes[@]}" \
             --title "Eva ${RELEASE_TAG#v}" --prerelease="$PRERELEASE"
           gh release edit "$RELEASE_TAG" --draft=false
