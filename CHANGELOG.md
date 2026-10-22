@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6
+
+<!-- release-source: fb44b3dbbbc6dee667d2bf674479f76ffaac942e -->
+
+- fix: normalize numeric options from Eva
+- fix: snap color temperature to supported options
+
 ## 0.1.5
 
 <!-- release-source: abac196547eb0cea1ac19dc038fe764094e0b274 -->
