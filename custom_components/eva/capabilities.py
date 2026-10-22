@@ -205,17 +205,31 @@ def is_light(device: dict) -> bool:
     ) or (device_type.startswith("light") or device_type == "dimmer")
 
 
+def numeric_options(device: dict, key: str) -> list[float]:
+    """Eva can encode numeric option metadata as strings, including bulb presets."""
+    values = device["attributes"][key].get("options")
+    if not isinstance(values, list):
+        return []
+    result = []
+    for value in values:
+        try:
+            value = number(float(value) if isinstance(value, str) else value)
+        except ValueError:
+            return []
+        if value is None:
+            return []
+        result.append(value)
+    return result
+
+
 def limits(device: dict, key: str) -> tuple[float | None, float | None, float]:
     """Honor per-device bounds and calibration resolution."""
     spec = ATTRIBUTES[key]
     attribute = device["attributes"][key]
-    options = attribute.get("options")
-    numeric_options = (
-        [number(value) for value in options] if isinstance(options, list) else []
-    )
+    values = numeric_options(device, key)
     minimum, maximum = spec.minimum, spec.maximum
-    if numeric_options and all(value is not None for value in numeric_options):
-        minimum, maximum = min(numeric_options), max(numeric_options)
+    if values:
+        minimum, maximum = min(values), max(values)
     minimum = number(attribute.get("minValue")) if "minValue" in attribute else minimum
     maximum = number(attribute.get("maxValue")) if "maxValue" in attribute else maximum
     step = (
@@ -303,6 +317,9 @@ def validate_value(device: dict, key: str, value: Any) -> Any:
             if float(value).is_integer():
                 value = int(value)
     allowed = device["attributes"][key].get("options")
-    if isinstance(allowed, list) and allowed and value not in allowed:
-        raise ValueError("Unsupported option")
+    if isinstance(allowed, list) and allowed:
+        if spec.kind in (int, float):
+            allowed = numeric_options(device, key)
+        if value not in allowed:
+            raise ValueError("Unsupported option")
     return value

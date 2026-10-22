@@ -7,7 +7,7 @@ from homeassistant.components.light import (
 )
 from homeassistant.exceptions import ServiceValidationError
 
-from .capabilities import limits, platform_for
+from .capabilities import limits, numeric_options, platform_for
 from .entity import EvaEntity, async_discover
 
 PARALLEL_UPDATES = 0
@@ -134,12 +134,11 @@ class EvaLight(EvaEntity, LightEntity):
             if ColorMode.COLOR_TEMP not in self.supported_color_modes:
                 raise ServiceValidationError("Color temperature control is unavailable")
             kelvin = round(kwargs["color_temp_kelvin"])
-            options = self.attributes["colorTemperature"].get("options")
+            options = numeric_options(self.device, "colorTemperature")
             # HA's continuous slider must map to the bulb's fixed Kelvin options.
             if (
-                isinstance(options, list)
-                and options
-                and all(type(option) is int and option > 0 for option in options)
+                options
+                and all(option > 0 for option in options)
                 and self.min_color_temp_kelvin <= kelvin <= self.max_color_temp_kelvin
             ):
                 kelvin = min(options, key=lambda option: abs(option - kelvin))

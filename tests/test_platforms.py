@@ -523,8 +523,35 @@ async def test_native_platforms_commands_updates_and_cleanup(
         ({"options": []}, 3200, 3200),
         ({"options": [2700, 4000]}, 7000, None),
         ({"options": [2700, 4000]}, 1000, None),
-        ({"options": ["2700", "4000"]}, 3200, None),
+        ({"options": ["2700", "4000"]}, 3200, 2700),
+        ({"options": ["2700", "4000"]}, 4000, 4000),
+        ({"options": [2700.0, 4000.0]}, 3200, 2700),
+        (
+            {
+                "minValue": 2200,
+                "maxValue": 4000,
+                "options": [
+                    "2200",
+                    "2300",
+                    "2500",
+                    "2700",
+                    "2900",
+                    "3100",
+                    "3300",
+                    "3500",
+                    "3700",
+                    "3900",
+                    "4000",
+                ],
+            },
+            3260,
+            3300,
+        ),
         ({"options": [2700, None, 4000]}, 3200, None),
+        ({"options": ["2700", "invalid", "4000"]}, 3200, None),
+        ({"options": ["2700", "nan", "4000"]}, 3200, None),
+        ({"options": ["2700", "inf", "4000"]}, 3200, None),
+        ({"options": [True, 4000]}, 3200, None),
     ],
 )
 async def test_light_color_temperature_options(
@@ -566,6 +593,15 @@ async def test_light_color_temperature_options(
         None,
     )
     assert light.color_temp_kelvin == 2700  # State waits for a device report.
+
+
+def test_numeric_string_options_are_metadata_only():
+    data = {"attributes": {"colorTemperature": {"options": ["2200", "2700", "4000"]}}}
+    assert limits(data, "colorTemperature") == (2200, 4000, 1)
+    assert validate_value(data, "colorTemperature", 2700) == 2700
+    for value in ("2700", True, 3200, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            validate_value(data, "colorTemperature", value)
 
 
 @pytest.mark.parametrize(
