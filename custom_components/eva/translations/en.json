@@ -51,6 +51,7 @@
       "invalid_environment": "Select Test, QA, or Prod.",
       "invalid_account": "Select a saved login for this environment.",
       "invalid_auth": "Eva rejected the login. Enter your email and current password.",
+      "permission_denied": "This account does not have permission to access the Eva API.",
       "invalid_home": "Select a home from the list.",
       "home_not_found": "This account no longer has access to the selected home.",
       "cannot_save": "Unable to save your login. Check Home Assistant’s storage and try again.",

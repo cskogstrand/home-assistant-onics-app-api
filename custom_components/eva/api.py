@@ -20,6 +20,10 @@ class EvaAuthError(EvaError):
     """The server rejected authentication or home access."""
 
 
+class EvaPermissionError(EvaError):
+    """The account lacks permission for a particular operation."""
+
+
 class EvaRateLimitError(EvaError):
     """The server requires a delay before retrying."""
 
@@ -79,7 +83,7 @@ class EvaClient:
                 "or the account email is not verified"
             )
         if response.status == 403:
-            raise EvaAuthError(
+            raise EvaPermissionError(
                 "Eva returned HTTP 403: account lacks access or permission "
                 "for the requested resource"
             )
@@ -273,6 +277,9 @@ class EvaClient:
                             if size > 8 * 1024 * 1024:
                                 raise EvaError("Eva SSE event exceeds the 8 MiB limit")
                             data.append(value)
+        except EvaPermissionError as err:
+            # A rejected home stream means home access itself must be restored.
+            raise EvaAuthError(str(err)) from err
         except TimeoutError:
             # Let the coordinator distinguish idle streams from failed snapshots.
             raise

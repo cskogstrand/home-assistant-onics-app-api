@@ -10,7 +10,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from .api import EvaAuthError, EvaClient, EvaError, EvaRateLimitError
+from .api import (
+    EvaAuthError,
+    EvaClient,
+    EvaError,
+    EvaPermissionError,
+    EvaRateLimitError,
+)
 from .const import (
     CONF_ENVIRONMENT,
     CONF_HOME_ID,
@@ -53,6 +59,8 @@ class EvaConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         except EvaAuthError, ValueError:
             return "invalid_auth"
+        except EvaPermissionError:
+            return "permission_denied"
         except EvaRateLimitError:
             return "rate_limited"
         except EvaError:

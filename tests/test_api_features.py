@@ -14,7 +14,7 @@ from homeassistant.exceptions import (
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.eva.api import EvaAuthError, EvaError
+from custom_components.eva.api import EvaAuthError, EvaError, EvaPermissionError
 from custom_components.eva.events import event_data
 from custom_components.eva.services import SCHEMAS
 from custom_components.eva.state import HomeState, InvalidEvent
@@ -863,7 +863,12 @@ async def test_groups_reject_unavailable_or_managed_members(hass, runtime, event
 
 
 @pytest.mark.parametrize(
-    "error", [EvaAuthError("test auth failure"), EvaError("test network failure")]
+    "error",
+    [
+        EvaAuthError("test auth failure"),
+        EvaPermissionError("forbidden"),
+        EvaError("test network failure"),
+    ],
 )
 async def test_read_actions_report_failure_and_reauth(hass, runtime, error):
     entry, _, _, read = runtime

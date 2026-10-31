@@ -9,6 +9,7 @@ from custom_components.eva.api import (
     EvaAuthError,
     EvaClient,
     EvaError,
+    EvaPermissionError,
     EvaRateLimitError,
     validate_base_url,
 )
@@ -203,7 +204,13 @@ async def test_command_method_escaping_headers_and_success(status):
 
 @pytest.mark.parametrize(
     "status,error",
-    [(401, EvaAuthError), (429, EvaRateLimitError), (302, EvaError), (500, EvaError)],
+    [
+        (401, EvaAuthError),
+        (403, EvaPermissionError),
+        (429, EvaRateLimitError),
+        (302, EvaError),
+        (500, EvaError),
+    ],
 )
 async def test_command_errors_are_not_retried(status, error):
     client, session, response = make_client(status=status)
@@ -268,7 +275,13 @@ async def test_on_demand_data_is_scoped_and_encoded():
 
 @pytest.mark.parametrize(
     "status,error",
-    [(401, EvaAuthError), (429, EvaRateLimitError), (302, EvaError), (500, EvaError)],
+    [
+        (401, EvaAuthError),
+        (403, EvaPermissionError),
+        (429, EvaRateLimitError),
+        (302, EvaError),
+        (500, EvaError),
+    ],
 )
 async def test_on_demand_read_failure_is_not_retried(status, error):
     client, session, _ = make_client(status=status)

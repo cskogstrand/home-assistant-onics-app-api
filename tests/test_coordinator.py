@@ -423,6 +423,44 @@ async def test_live_auth_failure_starts_reauth_once(hass, snapshot):
     await coordinator.async_shutdown()
 
 
+@pytest.mark.parametrize("operation", ["command", "charger"])
+async def test_forbidden_operation_does_not_start_reauthentication(
+    hass, snapshot, operation
+):
+    from tests.test_api import make_client
+
+    coordinator = make_coordinator(hass, None)
+    coordinator.data = coordinator.data.apply(snapshot)
+    coordinator.last_update_success = True
+    client, session, response = make_client(status=403)
+    session.request.return_value.__aenter__ = AsyncMock(return_value=response)
+    session.request.return_value.__aexit__ = AsyncMock(return_value=False)
+    coordinator.client = client
+    with patch.object(MockConfigEntry, "async_start_reauth") as reauth:
+        if operation == "command":
+            with pytest.raises(HomeAssistantError, match="HTTP 403"):
+                await coordinator.async_command(
+                    "PATCH",
+                    ("devices", "test-device", "attributes", "doorLockVolume", "low"),
+                )
+            assert not coordinator._pending_commands
+            assert not coordinator._command_listeners
+        else:
+            coordinator.data.devices["test-device"].update(
+                external=True, type="evCharger"
+            )
+            coordinator._ready.set_result(None)
+            coordinator._charger_task = hass.async_create_background_task(
+                coordinator._async_poll_chargers(), "test forbidden charger"
+            )
+            await hass.async_block_till_done()
+            assert coordinator.external_status["test-device"] is None
+            assert not coordinator._charger_task.done()
+        reauth.assert_not_called()
+        assert coordinator.last_update_success
+    await coordinator.async_shutdown()
+
+
 @pytest.mark.parametrize("socket_timeout", [False, True])
 @pytest.mark.parametrize("offline", [None, "gateway", "device"])
 async def test_silent_connection_reconnects_without_changing_availability(

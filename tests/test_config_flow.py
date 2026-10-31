@@ -13,7 +13,12 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from homeassistant.util.file import WriteError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.eva.api import EvaAuthError, EvaError, EvaRateLimitError
+from custom_components.eva.api import (
+    EvaAuthError,
+    EvaError,
+    EvaPermissionError,
+    EvaRateLimitError,
+)
 from custom_components.eva.const import DOMAIN, ENVIRONMENT_NAMES, ENVIRONMENTS
 from custom_components.eva.credentials import async_get_credentials
 
@@ -189,6 +194,7 @@ async def test_saved_list_and_new_user_button_never_prepopulate_passwords(hass):
     "error,reason",
     [
         (EvaAuthError("rejected"), "invalid_auth"),
+        (EvaPermissionError("forbidden"), "permission_denied"),
         (EvaRateLimitError(60), "rate_limited"),
         (EvaError("offline"), "cannot_connect"),
     ],
@@ -280,6 +286,7 @@ async def test_failed_save_can_be_retried_without_creating_entry(
         (HOMES, "reauth_successful"),
         ([], "home_not_found"),
         (EvaAuthError("rejected"), "invalid_auth"),
+        (EvaPermissionError("forbidden"), "permission_denied"),
         (EvaError("offline"), "cannot_connect"),
         (EvaRateLimitError(60), "rate_limited"),
     ],
