@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.7
+
+<!-- release-source: bd36b98e4725f88f44e4b886edfd9f7ac72870ef -->
+
+- fix: separate permission and login failures
+- fix: expose Yale automatic locking
+- fix: expire alarm entry countdowns
+- fix: send empty text values in JSON
+- fix: route settings through device updates
+- fix: retain devices inside room groups
+- fix: allow more time for mood activation
+- fix: process mood activation events correctly
+
 ## 0.1.6
 
 <!-- release-source: fb44b3dbbbc6dee667d2bf674479f76ffaac942e -->
