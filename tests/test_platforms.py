@@ -8,6 +8,8 @@ import pytest
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
+from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.eva.capabilities import (
     ATTRIBUTES,
@@ -16,6 +18,7 @@ from custom_components.eva.capabilities import (
     validate_value,
 )
 from custom_components.eva.const import DOMAIN
+from custom_components.eva.events import EVENT_TYPE
 from tests.test_init import make_entry
 
 
@@ -171,7 +174,7 @@ async def test_native_platforms_commands_updates_and_cleanup(
                 softwareUpdate={"status": "assigned", "version": "1.1"},
             )
         elif parts[0] == "moods":
-            event.update(eventType="moodActivated")
+            event.update(eventType="moodActivated", moodId=parts[1])
         else:
             event.update(
                 eventType="activeProfileUpdated",
@@ -510,6 +513,126 @@ async def test_native_platforms_commands_updates_and_cleanup(
         coordinator = entry.runtime_data
         assert await hass.config_entries.async_unload(entry.entry_id)
         assert not coordinator._command_listeners
+
+
+async def test_mood_events_update_scene_activation_and_active_set(
+    hass, snapshot, saved_credentials, freezer
+):
+    freezer.move_to("2026-10-31T10:00:00Z")
+    snapshot["home"]["moods"] = [{"id": "home-mood", "active": True}]
+    snapshot["home"]["rooms"][0]["moods"] = [{"id": "room-mood", "active": False}]
+    queue = asyncio.Queue()
+
+    async def stream(*args):
+        yield snapshot
+        while True:
+            yield await queue.get()
+
+    entry = make_entry(hass)
+    listeners_before = hass.bus.async_listeners().get(EVENT_TYPE, 0)
+    with patch("custom_components.eva.api.EvaClient.async_events", new=stream):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        home_id = entity_id(hass, "scene", "mood:home-mood")
+        room_id = entity_id(hass, "scene", "mood:room-mood")
+        calls = async_mock_service(hass, "test", "record_activation")
+        assert await async_setup_component(
+            hass,
+            "automation",
+            {
+                "automation": {
+                    "alias": "React to mood activation",
+                    "triggers": [
+                        {"trigger": "state", "entity_id": room_id, "to": None}
+                    ],
+                    "actions": [{"action": "test.record_activation"}],
+                }
+            },
+        )
+        await hass.async_block_till_done()
+        initial = hass.states.get(room_id).state
+        activated = {
+            "eventType": "moodActivated",
+            "moodId": "room-mood",
+            "activeMoods": ["room-mood"],
+        }
+        try:
+            for count in range(1, 3):
+                # Repeated activation must be observable even if already active.
+                freezer.tick(1)
+                queue.put_nowait(activated)
+                await hass.async_block_till_done()
+                current = hass.states.get(room_id)
+                assert current.state != initial
+                assert current.attributes["active"] is True
+                assert hass.states.get(home_id).attributes["active"] is False
+                assert len(calls) == count
+                initial = current.state
+
+            # Another entry and a different mood cannot activate this scene.
+            freezer.tick(1)
+            hass.bus.async_fire(
+                EVENT_TYPE, {**activated, "config_entry_id": "other-entry"}
+            )
+            queue.put_nowait({"eventType": "moodActivated", "moodId": "home-mood"})
+            queue.put_nowait({"eventType": "activeMoodsChanged", "activeMoods": []})
+            await hass.async_block_till_done()
+            assert hass.states.get(room_id).state == initial
+            assert hass.states.get(room_id).attributes["active"] is False
+            assert len(calls) == 2
+
+            # Snapshots restore state without inventing an activation.
+            queue.put_nowait(snapshot)
+            await hass.async_block_till_done()
+            assert hass.states.get(room_id).state == initial
+            assert len(calls) == 2
+
+            sent = asyncio.Event()
+
+            async def command(*args, **kwargs):
+                sent.set()
+                return "mood-action"
+
+            with patch(
+                "custom_components.eva.api.EvaClient.async_command", new=command
+            ):
+                for outcome in ("moodActivated", "actionTimeout"):
+                    freezer.tick(1)
+                    sent.clear()
+                    request = hass.async_create_background_task(
+                        hass.services.async_call(
+                            "scene", "turn_on", {"entity_id": room_id}, blocking=True
+                        ),
+                        "test mood activation",
+                    )
+                    try:
+                        await sent.wait()
+                        assert hass.states.get(room_id).state == initial
+                        queue.put_nowait(
+                            {
+                                **activated,
+                                "eventType": outcome,
+                                "actionId": "mood-action",
+                            }
+                        )
+                        if outcome == "actionTimeout":
+                            with pytest.raises(
+                                HomeAssistantError, match="could not complete"
+                            ):
+                                await request
+                        else:
+                            await request
+                        await hass.async_block_till_done()
+                        assert len(calls) == 3
+                        if outcome == "actionTimeout":
+                            assert hass.states.get(room_id).state == initial
+                        initial = hass.states.get(room_id).state
+                    finally:
+                        request.cancel()
+                        await asyncio.gather(request, return_exceptions=True)
+        finally:
+            assert await hass.config_entries.async_unload(entry.entry_id)
+            assert hass.bus.async_listeners().get(EVENT_TYPE, 0) == listeners_before
 
 
 @pytest.mark.parametrize("resource", ["devices", "groups"])

@@ -217,7 +217,9 @@ class HomeState:
                     for device_id, device in self.devices.items()
                 },
             )
-        if event_type == "activeMoodsChanged":
+        if event_type == "activeMoodsChanged" or (
+            event_type == "moodActivated" and "activeMoods" in event
+        ):
             active = event.get("activeMoods")
             if not isinstance(active, list) or any(
                 not isinstance(mood_id, str) for mood_id in active

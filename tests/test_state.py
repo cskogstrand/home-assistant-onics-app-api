@@ -118,3 +118,26 @@ def test_live_moods_energy_saver_and_failed_pairing(snapshot):
     for active in [None, "room-mood", [{}]]:
         with pytest.raises(InvalidEvent, match="active moods"):
             state.apply({"eventType": "activeMoodsChanged", "activeMoods": active})
+
+
+@pytest.mark.parametrize("active", [["room-mood"], [], ["unknown-mood"]])
+def test_mood_activation_replaces_active_moods_when_supplied(snapshot, active):
+    snapshot["home"]["moods"] = [{"id": "home-mood", "active": True}]
+    snapshot["home"]["rooms"][0]["moods"] = [{"id": "room-mood", "active": False}]
+    state = HomeState("test-home", {}, False).apply(snapshot)
+    changed = state.apply(
+        {"eventType": "moodActivated", "moodId": "room-mood", "activeMoods": active}
+    )
+    assert changed.moods["home-mood"]["active"] is False
+    assert changed.moods["room-mood"]["active"] is ("room-mood" in active)
+    assert state.moods["home-mood"]["active"] is True
+    assert state.moods["room-mood"]["active"] is False
+
+
+@pytest.mark.parametrize("active", [None, "room-mood", [{}]])
+def test_mood_activation_rejects_invalid_active_moods(snapshot, active):
+    state = HomeState("test-home", {}, False).apply(snapshot)
+    with pytest.raises(InvalidEvent, match="active moods"):
+        state.apply(
+            {"eventType": "moodActivated", "moodId": "room-mood", "activeMoods": active}
+        )

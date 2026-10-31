@@ -24,12 +24,24 @@ mood switches can produce these events as well as actions from HA or the app.
 | --- | --- | --- |
 | Contact opens/closes; motion, presence, smoke, water, tamper or panic is reported | Entity state, or `deviceAttributeChanged`/`deviceAttributeReport` with `deviceId`, `name`, `value` | API values are booleans; binary-sensor states are `on`/`off`. Event reports can repeat without a state transition. |
 | Temperature, humidity, power or another measurement crosses a limit | Numeric state on the sensor | Fires on entering the configured range; an event trigger on each report is a different behavior. |
-| A mood is activated | `moodActivated` with `moodId` | Means the mood's target attributes are active. It does not identify a physical button or prove a human pressed one. |
-| A scene becomes active/inactive | Scene `active` attribute, or `activeMoodsChanged` | `activeMoodsChanged` carries the full list of active mood IDs, including an empty list. |
+| A mood is activated | `moodActivated` with `moodId`, or the scene's state timestamp | Means the mood's target attributes are active. Each received activation updates the scene timestamp, including repeated activations. It does not identify a physical button or prove a human pressed one. |
+| A scene becomes active/inactive | Scene `active` attribute, or `activeMoodsChanged` | `activeMoodsChanged` carries the full list of active mood IDs, including an empty list. A supplied `activeMoods` list on `moodActivated` also replaces the active set. |
 | A gateway/device is reported online/offline | Corresponding `eva_event`, or entity availability state | Online/offline events may repeat. An unavailable entity can also indicate an SSE or polling failure. |
 | Alarm arming/disarming, exit completion or entry countdown | Alarm entity state or profile/countdown event | Modes are `disarmed`, `dayArmed`, `nightArmed`, `armed`. Alert events do not set the alarm entity to `triggered`. Unrelated snapshots retain countdowns; the exit deadline is reconstructed from the profile when possible. |
 | Breaker/tariff limit changes, warning, pairing progress or action failure | Matching `eva_event` | These signals need not change an entity state. |
 | External charger starts/stops or a car plugs in | Charger entity state | Status is polled about once per minute; the poll itself does not fire `eva_event`. |
+
+Mood handling was checked again on **2026-10-31**. The backend includes
+`activeMoods` on `moodActivated`, although the public event table lists only
+`moodId` and `actionId`. If that list is absent, only the named mood is marked
+active. Home snapshots and `activeMoodsChanged` update the scene's `active`
+attribute without recording an activation.
+
+Eva scenes record their state timestamp when `moodActivated` arrives, including
+activations originating outside HA. Calling `scene.turn_on` waits for confirmation;
+the request itself does not record an activation. For a scene state trigger, use
+`to: null` to ignore attribute-only changes. The `eva_event` example below reacts
+directly to the API notification.
 
 ## Delivery rules
 
