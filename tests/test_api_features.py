@@ -682,6 +682,59 @@ async def test_reconstructed_exit_countdown_finishes_without_new_events(
         await hass.config_entries.async_unload(entry.entry_id)
 
 
+@pytest.mark.parametrize(
+    "deadline",
+    [
+        "2026-10-09T10:00:30Z",
+        "2026-10-09T12:00:30+02:00",
+        "2026-10-09T09:59:30Z",
+        "2026-10-09T10:00:30",
+        "invalid",
+        None,
+    ],
+)
+async def test_entry_countdown_expires_without_an_alarm_event(
+    hass, snapshot, saved_credentials, freezer, deadline
+):
+    freezer.move_to("2026-10-09T10:00:00Z")
+    snapshot["home"]["activeProfile"] = {
+        "mode": "armed",
+        "modeChangedAt": "2026-10-09T09:00:00Z",
+    }
+    queue = asyncio.Queue()
+
+    async def stream(*args):
+        yield snapshot
+        while True:
+            yield await queue.get()
+
+    entry = make_entry(hass)
+    with patch("custom_components.eva.api.EvaClient.async_events", new=stream):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        queue.put_nowait(
+            {
+                "eventType": "activeProfileEntryTimeStarted",
+                "estimatedEntryDelayExpiresAt": deadline,
+            }
+        )
+        await hass.async_block_till_done()
+        alarm = entity_id(hass, "alarm_control_panel", "alarm")
+        pending = deadline in {"2026-10-09T10:00:30Z", "2026-10-09T12:00:30+02:00"}
+        assert hass.states.get(alarm).state == ("pending" if pending else "armed_away")
+        queue.put_nowait(deepcopy(snapshot))
+        await hass.async_block_till_done()
+        assert hass.states.get(alarm).state == ("pending" if pending else "armed_away")
+
+        freezer.tick(31)
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+        assert hass.states.get(alarm).state == "armed_away"
+        queue.put_nowait(deepcopy(snapshot))
+        await hass.async_block_till_done()
+        assert hass.states.get(alarm).state == "armed_away"
+        assert await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_initial_feature_flags_prevent_discovery_until_enabled(
     hass, snapshot, saved_credentials
 ):

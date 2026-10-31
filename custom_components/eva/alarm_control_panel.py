@@ -68,17 +68,19 @@ class EvaAlarm(CoordinatorEntity, AlarmControlPanelEntity):
     @property
     def alarm_state(self):
         alarm = self.coordinator.data.alarm
-        if alarm.get("entry_at"):
+        if self._countdown_time("entry_at"):
             return AlarmControlPanelState.PENDING
-        expires = self._exit_time()
-        if expires and dt_util.as_utc(expires) > dt_util.utcnow():
+        if self._countdown_time("exit_at"):
             return AlarmControlPanelState.ARMING
         mode = alarm.get("mode")
         return MODES.get(mode) if isinstance(mode, str) else None
 
-    def _exit_time(self):
-        value = self.coordinator.data.alarm.get("exit_at")
-        return dt_util.parse_datetime(value) if isinstance(value, str) else None
+    def _countdown_time(self, key):
+        value = self.coordinator.data.alarm.get(key)
+        expires = dt_util.parse_datetime(value) if isinstance(value, str) else None
+        if expires and expires.tzinfo is not None and expires > dt_util.utcnow():
+            return expires
+        return None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -89,8 +91,8 @@ class EvaAlarm(CoordinatorEntity, AlarmControlPanelEntity):
         if self._cancel_countdown:
             self._cancel_countdown()
             self._cancel_countdown = None
-        expires = self._exit_time()
-        if expires and dt_util.as_utc(expires) > dt_util.utcnow():
+        expires = self._countdown_time("entry_at") or self._countdown_time("exit_at")
+        if expires:
             self._cancel_countdown = async_track_point_in_utc_time(
                 self.hass, self._countdown_finished, expires
             )
@@ -99,7 +101,7 @@ class EvaAlarm(CoordinatorEntity, AlarmControlPanelEntity):
     @callback
     def _countdown_finished(self, now):
         self._cancel_countdown = None
-        self.async_write_ha_state()
+        self._handle_coordinator_update()
 
     async def async_will_remove_from_hass(self):
         if self._cancel_countdown:
