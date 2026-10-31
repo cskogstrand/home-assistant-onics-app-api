@@ -1,6 +1,7 @@
 """Exercise reconnects, failure states and cancellation without network access."""
 
 import asyncio
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -11,7 +12,11 @@ from homeassistant.exceptions import (
     HomeAssistantError,
 )
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from custom_components.eva.api import EvaAuthError, EvaClient, EvaError
 from custom_components.eva.coordinator import EvaCoordinator
@@ -61,6 +66,66 @@ async def test_command_distinguishes_request_failure_from_missing_confirmation(
         )
     coordinator.client.async_command.assert_awaited_once()
     assert not coordinator._command_listeners
+
+
+@pytest.mark.parametrize("outcome", ["moodActivated", "actionTimeout", None, "cancel"])
+async def test_mood_confirmation_can_arrive_after_thirty_seconds(
+    hass, snapshot, outcome
+):
+    coordinator = make_coordinator(hass, None)
+    coordinator.data = coordinator.data.apply(snapshot)
+    coordinator.last_update_success = True
+    sent = asyncio.Event()
+
+    async def command(*args):
+        sent.set()
+        return "mood-action"
+
+    coordinator.client.async_command = AsyncMock(side_effect=command)
+    started = dt_util.utcnow()
+    request = hass.async_create_background_task(
+        coordinator.async_command("POST", ("moods", "test-mood", "activate")),
+        "test mood confirmation",
+    )
+    try:
+        await sent.wait()
+        async_fire_time_changed(hass, started + timedelta(seconds=40))
+        await hass.async_block_till_done()
+        assert not request.done()
+
+        for listener in tuple(coordinator._command_listeners):
+            listener({"eventType": "moodActivated", "actionId": "unrelated-action"})
+        await hass.async_block_till_done()
+        assert not request.done()
+
+        if outcome is None:
+            async_fire_time_changed(hass, started + timedelta(seconds=59))
+            await hass.async_block_till_done()
+            assert not request.done()
+            async_fire_time_changed(hass, started + timedelta(seconds=61))
+            with pytest.raises(
+                HomeAssistantError, match="did not confirm it within 60 seconds"
+            ):
+                await request
+        elif outcome == "cancel":
+            request.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await request
+        else:
+            for listener in tuple(coordinator._command_listeners):
+                listener({"eventType": outcome, "actionId": "mood-action"})
+            if outcome == "actionTimeout":
+                with pytest.raises(HomeAssistantError, match="could not complete"):
+                    await request
+            else:
+                assert await request is True
+
+        assert not coordinator._command_listeners
+        assert not coordinator._pending_commands
+        coordinator.client.async_command.assert_awaited_once()
+    finally:
+        request.cancel()
+        await asyncio.gather(request, return_exceptions=True)
 
 
 @pytest.mark.parametrize("resource", ["devices", "groups"])

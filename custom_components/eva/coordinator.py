@@ -120,6 +120,8 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             and "external" not in parts
         ):
             raise HomeAssistantError("Eva home is unavailable")
+        # Backend mood confirmations remain valid for 50s; allow delivery time too.
+        confirmation_timeout = 60 if parts[0] == "moods" else 30
         action_id = None
         early_results: dict[str, str] = {}
         result = self.hass.loop.create_future()
@@ -154,7 +156,7 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
                 return True
             if action_id in early_results:
                 result.set_result(early_results[action_id])
-            async with asyncio.timeout(30):
+            async with asyncio.timeout(confirmation_timeout):
                 event_type = await result
             if event_type is None or self._pending_commands.get(resource) is not result:
                 return False
@@ -168,7 +170,8 @@ class EvaCoordinator(DataUpdateCoordinator[HomeState]):
             raise HomeAssistantError(str(err)) from err
         except TimeoutError as err:
             raise HomeAssistantError(
-                "Eva accepted the command but did not confirm it within 30 seconds"
+                "Eva accepted the command but did not confirm it "
+                f"within {confirmation_timeout} seconds"
             ) from err
         finally:
             if self._pending_commands.get(resource) is result:

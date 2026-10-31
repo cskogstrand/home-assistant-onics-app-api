@@ -39,7 +39,10 @@ attribute without recording an activation.
 
 Eva scenes record their state timestamp when `moodActivated` arrives, including
 activations originating outside HA. Calling `scene.turn_on` waits for confirmation;
-the request itself does not record an activation. For a scene state trigger, use
+the request itself does not record an activation. After the API accepts the
+request, mood activation waits up to 60 seconds for a matching `actionId`, allowing
+for backend retries and event delivery. A reported failure ends the wait immediately;
+other commands retain their 30-second confirmation limit. For a scene state trigger, use
 `to: null` to ignore attribute-only changes. The `eva_event` example below reacts
 directly to the API notification.
 
