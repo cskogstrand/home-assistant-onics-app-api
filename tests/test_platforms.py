@@ -49,6 +49,59 @@ def entity_id(hass, domain, key):
     )
 
 
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("showTemperature", False),
+        ("roomThermometer", False),
+        ("showTvocConcentration", False),
+        ("roomTvocConcentration", False),
+        ("moodButton1", "evening"),
+        ("moodButton2", "evening"),
+        ("moodButton3", "evening"),
+        ("moodButton4", "evening"),
+        ("regulatorFallback", 50),
+        ("mode", "onOffSwitch"),
+        ("sensor", "floorTemperature"),
+    ],
+)
+async def test_backend_managed_settings_use_device_update(hass, snapshot, key, value):
+    from homeassistant.helpers.entity import EntityDescription
+
+    from custom_components.eva.entity import EvaEntity
+    from tests.test_coordinator import make_coordinator
+
+    target = device("control", {key: None}, type="socketSingle")
+    if key in {"mode", "sensor"}:
+        target["attributes"][0]["options"] = [value]
+    snapshot["home"]["rooms"][0]["devices"] = [target]
+    coordinator = make_coordinator(hass, None)
+    coordinator.data = coordinator.data.apply(snapshot)
+    coordinator.last_update_success = True
+    entity = EvaEntity(coordinator, "control", EntityDescription(key=key))
+    requests = []
+
+    async def command(home_id, method, parts, payload):
+        requests.append((home_id, method, parts, payload))
+        for listener in coordinator._command_listeners:
+            listener({"eventType": "deviceUpdated", "actionId": "update-action"})
+        return "update-action"
+
+    coordinator.client.async_command = command
+    assert await entity.async_write(key, value)
+    assert requests == [
+        (
+            "test-home",
+            "PATCH",
+            ("devices", "control"),
+            {
+                "attributes": [{"name": key, "value": value}],
+            },
+        )
+    ]
+    assert entity.attribute_value(key) is None
+
+
 async def test_native_platforms_commands_updates_and_cleanup(
     hass, snapshot, saved_credentials
 ):
@@ -146,7 +199,9 @@ async def test_native_platforms_commands_updates_and_cleanup(
         writes.append((method, parts, payload))
         action_id = f"action-{len(writes)}"
         event = {"actionId": action_id}
-        if parts[0] in {"devices", "groups"} and parts[2] == "attributes":
+        if parts[0] == "devices" and len(parts) == 2:
+            event.update(eventType="deviceUpdated", deviceId=parts[1])
+        elif parts[0] in {"devices", "groups"} and parts[2] == "attributes":
             key, raw_value = parts[3:]
             import json
 
@@ -340,7 +395,7 @@ async def test_native_platforms_commands_updates_and_cleanup(
                 "select_option",
                 "thermostat:sensor",
                 {"option": "airTemperature"},
-                ("devices", "thermostat", "attributes", "sensor", "airTemperature"),
+                ("devices", "thermostat"),
             ),
             (
                 "text",

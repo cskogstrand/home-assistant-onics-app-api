@@ -193,15 +193,35 @@ class EvaEntity(CoordinatorEntity[EvaCoordinator]):
             value = validate_value(self.device, key, value)
         except ValueError as err:
             raise ServiceValidationError(str(err)) from err
+        resource = self.device.get("resource", "devices")
+        device_id = str(self.device.get("id", self._device_id))
+        # These settings need the backend's device-update side effects.
+        if resource == "devices" and key in {
+            "showTemperature",
+            "roomThermometer",
+            "showTvocConcentration",
+            "roomTvocConcentration",
+            "moodButton1",
+            "moodButton2",
+            "moodButton3",
+            "moodButton4",
+            "regulatorFallback",
+            "mode",
+            "sensor",
+        }:
+            return await self.coordinator.async_command(
+                "PATCH",
+                ("devices", device_id),
+                {"attributes": [{"name": key, "value": value}]},
+            )
         encoded = (
             value if isinstance(value, str) else json.dumps(value, allow_nan=False)
         )
-        resource = self.device.get("resource", "devices")
         return await self.coordinator.async_command(
             "POST" if resource == "groups" else "PATCH",
             (
                 resource,
-                str(self.device.get("id", self._device_id)),
+                device_id,
                 "attributes",
                 key,
                 encoded,
