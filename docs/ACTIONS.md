@@ -19,6 +19,8 @@ request to its home and environment. User account permissions in Eva still apply
   default lock code setting is supported. Empty code uses the original unlock
   route. The API's PIN-bearing device-update acknowledgement confirms gateway
   acceptance, not physical unlocking; the entity waits for reported lock state.
+  Yale's reported `autoLock` creates an **Automatic locking** switch; other locks
+  retain the numeric `autoRelockTime` setting when advertised.
 - **Features:** explicit `homeFeatures` flags gate corresponding devices,
   thermostats, locks, chargers, groups and moods. An existing entity becomes
   unavailable when its feature is disabled. Streams without flags retain the

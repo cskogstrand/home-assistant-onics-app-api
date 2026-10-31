@@ -378,6 +378,9 @@
       "child_lock": {
         "name": "Child lock"
       },
+      "auto_lock": {
+        "name": "Automatic locking"
+      },
       "relock": {
         "name": "Relock"
       },

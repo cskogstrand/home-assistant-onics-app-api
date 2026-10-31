@@ -206,6 +206,66 @@ async def test_empty_text_uses_json_and_waits_for_report(hass, snapshot, runtime
     assert hass.states.get(target).state == ""
 
 
+async def test_yale_automatic_locking_preserves_other_lock_settings(
+    hass, snapshot, runtime
+):
+    _, queue, command, _ = runtime
+    snapshot["home"]["rooms"][0]["devices"].extend(
+        [
+            device("yale", {"locked": True, "autoLock": True}),
+            device("other-lock", {"locked": True, "autoRelockTime": 30}),
+        ]
+    )
+    queue.put_nowait(deepcopy(snapshot))
+    await hass.async_block_till_done()
+    target = entity_id(hass, "switch", "yale:autoLock")
+    assert hass.states.get(target).state == "on"
+    assert hass.states.get(target).name.endswith("Automatic locking")
+    assert entity_id(hass, "sensor", "yale:autoLock") is None
+    for action, value, old_state in [
+        ("turn_off", False, "on"),
+        ("turn_on", True, "off"),
+    ]:
+        command.reset_mock()
+        await hass.services.async_call(
+            "switch", action, {"entity_id": target}, blocking=True
+        )
+        command.assert_awaited_once_with(
+            "test-home",
+            "PATCH",
+            ("devices", "yale", "attributes", "autoLock", str(value).lower()),
+            None,
+        )
+        assert hass.states.get(target).state == old_state
+        queue.put_nowait(
+            {
+                "eventType": "deviceAttributeChanged",
+                "deviceId": "yale",
+                "name": "autoLock",
+                "value": value,
+            }
+        )
+        await hass.async_block_till_done()
+        assert hass.states.get(target).state == ("on" if value else "off")
+
+    command.reset_mock()
+    await hass.services.async_call(
+        "number",
+        "set_value",
+        {
+            "entity_id": entity_id(hass, "number", "other-lock:autoRelockTime"),
+            "value": 15,
+        },
+        blocking=True,
+    )
+    command.assert_awaited_once_with(
+        "test-home",
+        "PATCH",
+        ("devices", "other-lock", "attributes", "autoRelockTime", "15"),
+        None,
+    )
+
+
 async def test_gateway_entities_commands_and_updates(hass, runtime):
     _, queue, command, _ = runtime
     gateway = "gateway:gateway-1:"

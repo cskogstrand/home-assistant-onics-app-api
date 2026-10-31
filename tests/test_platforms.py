@@ -786,6 +786,7 @@ def test_numeric_string_options_are_metadata_only():
     "key,value",
     [
         ("on", 1),
+        ("autoLock", 1),
         ("temperature", 22),
         ("onTime", -2),
         ("onTime", float("nan")),

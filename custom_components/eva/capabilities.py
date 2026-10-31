@@ -115,7 +115,7 @@ for _names, _class in (
 
 _add("on", platform="switch", kind=bool)
 _add(
-    "childLock relock frostAndHeatGuard showTemperature roomThermometer showTvocConcentration roomTvocConcentration relativeHumidityGuard partOfAlarmSystem moodButton2Enabled",
+    "childLock autoLock relock frostAndHeatGuard showTemperature roomThermometer showTvocConcentration roomTvocConcentration relativeHumidityGuard partOfAlarmSystem moodButton2Enabled",
     platform="switch",
     kind=bool,
 )
