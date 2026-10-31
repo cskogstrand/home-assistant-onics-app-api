@@ -79,10 +79,22 @@ class HomeState:
                         "active": mood.get("active") is True,
                     }
             for room in rooms:
-                for resource in ("devices", "groups"):
-                    entries = room.get(resource, [] if resource == "groups" else None)
-                    if not isinstance(entries, list):
-                        raise InvalidEvent("Invalid room devices or groups")
+                room_devices, room_groups = room.get("devices"), room.get("groups", [])
+                if not isinstance(room_devices, list) or not isinstance(
+                    room_groups, list
+                ):
+                    raise InvalidEvent("Invalid room devices or groups")
+                room_devices = list(room_devices)
+                for group in room_groups:
+                    if not isinstance(group, dict) or not isinstance(
+                        group.get("devices", []), list
+                    ):
+                        raise InvalidEvent("Invalid room group devices")
+                    room_devices.extend(group.get("devices", []))
+                for resource, entries in (
+                    ("devices", room_devices),
+                    ("groups", room_groups),
+                ):
                     for device in entries:
                         if not isinstance(device, dict) or type(
                             device.get("id")

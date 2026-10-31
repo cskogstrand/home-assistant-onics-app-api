@@ -125,6 +125,69 @@ async def test_real_setup_sensor_updates_environment_identity_and_unload(
         assert len(closed) == 2
 
 
+async def test_group_members_keep_identity_and_receive_live_updates(hass, snapshot):
+    queue = asyncio.Queue()
+    connections = []
+
+    async def stream(*args):
+        connections.append(args)
+        yield snapshot
+        while True:
+            yield await queue.get()
+
+    entry = make_entry(hass)
+    with patch("custom_components.eva.api.EvaClient.async_events", new=stream):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        entities, devices = er.async_get(hass), dr.async_get(hass)
+        unique_id = "test:test-home:test-device:temperature"
+        entity_id = entities.async_get_entity_id("sensor", DOMAIN, unique_id)
+        device_id = entities.async_get(entity_id).device_id
+        devices.async_update_device(device_id, name_by_user="Keep this name")
+
+        grouped = deepcopy(snapshot)
+        grouped["eventType"] = "groupSaved"
+        room = grouped["home"]["rooms"][0]
+        room["groups"] = [
+            {
+                "id": 1,
+                "name": "Room group",
+                "online": True,
+                "attributes": [{"name": "temperature", "value": 21.5}],
+                "devices": room["devices"],
+            }
+        ]
+        room["devices"] = []
+        queue.put_nowait(grouped)
+        queue.put_nowait(
+            {
+                "eventType": "deviceAttributeChanged",
+                "deviceId": "test-device",
+                "name": "temperature",
+                "value": 23,
+            }
+        )
+        await hass.async_block_till_done()
+        assert hass.states.get(entity_id).state == "23"
+        assert entry.runtime_data.data.devices["test-device"]["resource"] == "devices"
+        assert (
+            entry.runtime_data.data.devices["test-device"]["room_name"] == "Test room"
+        )
+        assert entities.async_get_entity_id(
+            "sensor", DOMAIN, "test:test-home:group:1:temperature"
+        )
+
+        # Ungrouping must keep the original registry entries and user customizations.
+        queue.put_nowait(deepcopy(snapshot))
+        await hass.async_block_till_done()
+        assert entities.async_get_entity_id("sensor", DOMAIN, unique_id) == entity_id
+        assert entities.async_get(entity_id).device_id == device_id
+        assert devices.async_get(device_id).name_by_user == "Keep this name"
+        assert entry.runtime_data.last_update_success
+        assert len(connections) == 1
+        assert await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_setup_auth_failure_prompts_reauthentication_and_cleans_up(hass):
     clients = []
 

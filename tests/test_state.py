@@ -61,6 +61,17 @@ def test_device_movement_and_rename_keep_identity(snapshot):
     assert moved.devices["test-device"]["room_name"] == "Other room"
 
 
+@pytest.mark.parametrize(
+    "members", [None, {}, [None], [{"id": 1}], [{"id": "member", "attributes": None}]]
+)
+def test_invalid_nested_group_devices_reject_snapshot(snapshot, members):
+    snapshot["home"]["rooms"][0]["groups"] = [
+        {"id": 1, "attributes": [], "devices": members}
+    ]
+    with pytest.raises(InvalidEvent):
+        HomeState("test-home", {}, False).apply(snapshot)
+
+
 def test_offline_deleted_and_invalid_events(snapshot):
     state = HomeState("test-home", {}, False).apply(snapshot)
     offline = state.apply({"eventType": "deviceOffline", "deviceId": "test-device"})
