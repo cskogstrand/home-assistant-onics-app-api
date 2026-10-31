@@ -196,19 +196,23 @@ class EvaEntity(CoordinatorEntity[EvaCoordinator]):
         resource = self.device.get("resource", "devices")
         device_id = str(self.device.get("id", self._device_id))
         # These settings need the backend's device-update side effects.
-        if resource == "devices" and key in {
-            "showTemperature",
-            "roomThermometer",
-            "showTvocConcentration",
-            "roomTvocConcentration",
-            "moodButton1",
-            "moodButton2",
-            "moodButton3",
-            "moodButton4",
-            "regulatorFallback",
-            "mode",
-            "sensor",
-        }:
+        if resource == "devices" and (
+            value == ""
+            or key
+            in {
+                "showTemperature",
+                "roomThermometer",
+                "showTvocConcentration",
+                "roomTvocConcentration",
+                "moodButton1",
+                "moodButton2",
+                "moodButton3",
+                "moodButton4",
+                "regulatorFallback",
+                "mode",
+                "sensor",
+            }
+        ):
             return await self.coordinator.async_command(
                 "PATCH",
                 ("devices", device_id),

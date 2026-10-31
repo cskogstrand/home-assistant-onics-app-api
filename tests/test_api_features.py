@@ -175,6 +175,37 @@ async def runtime(hass, snapshot, saved_credentials):
         await hass.async_block_till_done()
 
 
+@pytest.mark.parametrize(
+    "key", ["displayText", "moodButton1", "moodButton2", "moodButton3", "moodButton4"]
+)
+async def test_empty_text_uses_json_and_waits_for_report(hass, snapshot, runtime, key):
+    _, queue, command, _ = runtime
+    snapshot["home"]["rooms"][0]["devices"].append(device("text-control", {key: "old"}))
+    queue.put_nowait(deepcopy(snapshot))
+    await hass.async_block_till_done()
+    target = entity_id(hass, "text", f"text-control:{key}")
+    await hass.services.async_call(
+        "text", "set_value", {"entity_id": target, "value": ""}, blocking=True
+    )
+    command.assert_awaited_once_with(
+        "test-home",
+        "PATCH",
+        ("devices", "text-control"),
+        {"attributes": [{"name": key, "value": ""}]},
+    )
+    assert hass.states.get(target).state == "old"
+    queue.put_nowait(
+        {
+            "eventType": "deviceAttributeChanged",
+            "deviceId": "text-control",
+            "name": key,
+            "value": "",
+        }
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(target).state == ""
+
+
 async def test_gateway_entities_commands_and_updates(hass, runtime):
     _, queue, command, _ = runtime
     gateway = "gateway:gateway-1:"
