@@ -350,6 +350,19 @@ class HomeState:
             name = event.get("name")
             if not isinstance(name, str):
                 raise InvalidEvent("Attribute event has no name")
+            attributes = device["attributes"]
+            # Squid can emit guard settings that Eva omits from stove guard snapshots.
+            if (
+                device.get("type") == "stoveGuard"
+                and name
+                in {
+                    "temperatureThresholdMin",
+                    "temperatureThresholdMax",
+                    "frostAndHeatGuard",
+                }
+                and name not in attributes
+            ):
+                return self
             fields = {
                 key: value
                 for key, value in event.items()
@@ -367,7 +380,6 @@ class HomeState:
                     "groupId",
                 }
             }
-            attributes = device["attributes"]
             device = {
                 **device,
                 "attributes": {

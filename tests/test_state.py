@@ -52,6 +52,38 @@ def test_any_home_payload_replaces_state_and_removes_devices(snapshot):
     assert "test-device" in state.devices
 
 
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("temperatureThresholdMin", 10),
+        ("temperatureThresholdMax", 40),
+        ("frostAndHeatGuard", True),
+    ],
+)
+def test_stove_guard_threshold_events_require_an_advertised_attribute(
+    snapshot, key, value
+):
+    device = snapshot["home"]["rooms"][0]["devices"][0]
+    event = {
+        "eventType": "deviceAttributeChanged",
+        "deviceId": device["id"],
+        "name": key,
+        "value": value,
+    }
+    device["type"] = "stoveGuard"
+    state = HomeState("test-home", {}, False).apply(snapshot)
+    assert key not in state.apply(event).devices[device["id"]]["attributes"]
+
+    device["attributes"].append({"name": key, "value": None})
+    advertised = state.apply(snapshot).apply(event)
+    assert advertised.devices[device["id"]]["attributes"][key]["value"] == value
+
+    device["attributes"].pop()
+    device["type"] = "temperatureSensor"
+    thermometer = state.apply(snapshot).apply(event)
+    assert thermometer.devices[device["id"]]["attributes"][key]["value"] == value
+
+
 def test_device_movement_and_rename_keep_identity(snapshot):
     state = HomeState("test-home", {}, False).apply(snapshot)
     snapshot["home"]["rooms"][0]["name"] = "Other room"
