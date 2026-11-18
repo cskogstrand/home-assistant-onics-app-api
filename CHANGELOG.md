@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8
+
+<!-- release-source: 67f27866b39b390c03961971b49b58477b825106 -->
+
+- fix: ignore unadvertised stove guard thresholds
+
 ## 0.1.7
 
 <!-- release-source: bd36b98e4725f88f44e4b886edfd9f7ac72870ef -->
